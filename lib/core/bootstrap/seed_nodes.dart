@@ -1,6 +1,6 @@
 class SeedNodes {
   static const List<String> nodes = [
-    "ws://localhost:8080",
+    "wss://ton-serveur-signal.com", // ⚡ remplace par ton URL Render ou VPS
   ];
 
   static List<String> getAll() => nodes;
