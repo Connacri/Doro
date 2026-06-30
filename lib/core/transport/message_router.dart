@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 class MessageRouter {
   Function(Map<String, dynamic> msg)? onTx;
   Function(Map<String, dynamic> msg)? onChat;

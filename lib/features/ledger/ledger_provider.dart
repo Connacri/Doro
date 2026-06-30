@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
-import '../../core/sync/dag_engine.dart';
+import '../../core/dag/dag_engine.dart';
+import '../../core/dag/transaction_model.dart';
+import '../core/sync/dag_engine.dart';
 import 'transaction_model.dart';
 
 class LedgerProvider extends ChangeNotifier {

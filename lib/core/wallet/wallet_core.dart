@@ -1,35 +1,45 @@
+import '../dag/dag_engine.dart';
+import '../dag/transaction_model.dart';
 import 'wallet_model.dart';
 
 class WalletCore {
+  final DagEngine dag;
   final Map<String, Wallet> _wallets = {};
 
-  Wallet create(String address, String pubKey) {
-    final wallet = Wallet(
-      address: address,
-      publicKey: pubKey,
-      balance: BigInt.from(0),
-    );
+  WalletCore(this.dag);
 
-    _wallets[address] = wallet;
-    return wallet;
+  void registerWallet(String address, String publicKey) {
+    if (!_wallets.containsKey(address)) {
+      _wallets[address] = Wallet(
+        address: address,
+        publicKey: publicKey,
+        balance: BigInt.zero,
+      );
+    }
   }
 
   Wallet? get(String address) => _wallets[address];
 
-  bool transfer(String from, String to, BigInt amount) {
-    final sender = _wallets[from];
-    final receiver = _wallets[to];
-
-    if (sender == null || receiver == null) return false;
-    if (sender.balance < amount) return false;
-
-    sender.balance -= amount;
-    receiver.balance += amount;
-
-    return true;
+  BigInt getBalance(String address) {
+    BigInt balance = BigInt.zero;
+    
+    for (final tx in dag.all()) {
+      if (tx.to == address) {
+        balance += tx.amount;
+      }
+      if (tx.from == address) {
+        balance -= tx.amount;
+      }
+    }
+    
+    return balance;
   }
 
-  BigInt balanceOf(String address) {
-    return _wallets[address]?.balance ?? BigInt.zero;
+  List<Wallet> all() {
+    // Refresh balances before returning
+    for (final w in _wallets.values) {
+      w.balance = getBalance(w.address);
+    }
+    return _wallets.values.toList();
   }
 }

@@ -1,27 +1,23 @@
 import 'package:flutter/foundation.dart';
 import '../../core/storage/repositories/wallet_repository.dart';
-import '../../core/storage/entities/wallet_entity.dart';
+import '../../core/wallet/wallet_core.dart';
 
 class WalletProvider extends ChangeNotifier {
   final WalletRepository repo;
+  final WalletCore core;
 
-  WalletProvider(this.repo);
+  WalletProvider(this.repo, this.core);
 
-  List<WalletEntity> _wallets = [];
+  void send({
+    required String from,
+    required String to,
+    required BigInt amount,
+  }) {
+    final ok = core.transfer(from, to, amount);
 
-  List<WalletEntity> get wallets => _wallets;
-
-  void load() {
-    _wallets = repo.all();
-    notifyListeners();
-  }
-
-  void addWallet(WalletEntity wallet) {
-    repo.save(wallet);
-    load();
-  }
-
-  WalletEntity? getByAddress(String address) {
-    return _wallets.where((w) => w.address == address).firstOrNull;
+    if (ok) {
+      repo.syncFromCore(core);
+      notifyListeners();
+    }
   }
 }

@@ -1,15 +1,14 @@
-import 'ed25519_crypto.dart';
 import 'package:cryptography/cryptography.dart';
 
 class SignatureService {
-  final Ed25519Crypto _crypto = Ed25519Crypto();
+  final ed25519 = Ed25519();
 
-  Future<SimpleKeyPair> generateKeyPair() {
-    return _crypto.generateKeyPair();
+  Future<SimpleKeyPair> generate() {
+    return ed25519.newKeyPair();
   }
 
   Future<Signature> sign(List<int> data, SimpleKeyPair keyPair) {
-    return _crypto.sign(data, keyPair);
+    return ed25519.sign(data, keyPair: keyPair);
   }
 
   Future<bool> verify({
@@ -17,8 +16,8 @@ class SignatureService {
     required Signature signature,
     required SimplePublicKey publicKey,
   }) {
-    return _crypto.verify(
-      message: message,
+    return ed25519.verify(
+      message,
       signature: signature,
       publicKey: publicKey,
     );

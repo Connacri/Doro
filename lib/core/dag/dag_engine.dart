@@ -1,33 +1,55 @@
+import '../crypto/ed25519.dart';
 import 'transaction_model.dart';
 
 class DagEngine {
-  final Map<String, Transaction> _ledger = {};
+  final Map<String, Transaction> ledger = {};
+  final Set<String> tips = {}; // The current tips of the DAG
 
-  final Set<String> _spentInputs = {};
+  Function(Transaction tx)? onCommit;
 
-  bool add(Transaction tx) {
-    if (_ledger.containsKey(tx.id)) return false;
+  Future<bool> addTransaction(Transaction tx) async {
+    // 1. Validate Hash
+    final expectedHash = Transaction.calculateHash(
+      from: tx.from,
+      to: tx.to,
+      amount: tx.amount,
+      parents: tx.parents,
+      timestamp: tx.timestamp,
+      publicKey: tx.publicKey,
+    );
+    if (tx.id != expectedHash) return false;
 
-    // 1. check double spend
-    if (_spentInputs.contains(tx.from)) {
-      return false;
-    }
+    // 2. Validate Signature
+    final isSignatureValid = await Crypto.verify(tx.id, tx.signature, tx.publicKey);
+    if (!isSignatureValid) return false;
 
-    // 2. check approvals exist
-    for (final ref in tx.approvals) {
-      if (!_ledger.containsKey(ref)) {
-        return false;
+    // 3. Check Parents exist (except for genesis)
+    if (ledger.isNotEmpty) {
+      for (final parent in tx.parents) {
+        if (!ledger.containsKey(parent)) return false;
       }
     }
 
-    // 3. accept transaction
-    _ledger[tx.id] = tx;
-    _spentInputs.add(tx.from);
+    // 4. Update Ledger and Tips
+    ledger[tx.id] = tx;
+    
+    // Remove parents from tips and add new tx as tip
+    for (final parent in tx.parents) {
+      tips.remove(parent);
+    }
+    tips.add(tx.id);
 
+    onCommit?.call(tx);
     return true;
   }
 
-  Transaction? get(String id) => _ledger[id];
+  List<String> getTips() {
+    if (tips.isEmpty && ledger.isNotEmpty) {
+       // Fallback to latest transaction if tips are somehow empty
+       return [ledger.keys.last];
+    }
+    return tips.toList();
+  }
 
-  List<Transaction> get all => _ledger.values.toList();
+  List<Transaction> all() => ledger.values.toList();
 }
