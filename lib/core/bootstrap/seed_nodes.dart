@@ -1,6 +1,6 @@
 class SeedNodes {
   static const List<String> nodes = [
-    "https://volte-dhyr.onrender.com", // ⚡ remplace par ton URL Render ou VPS
+    "wss://volte-dhyr.onrender.com",
   ];
 
   static List<String> getAll() => nodes;
