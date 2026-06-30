@@ -1,6 +1,6 @@
 <p align="center">
-  <img src="https://img.shields.io/github/v/release/gzers/volte?style=for-the-badge&label=Version&color=6C5CE7" alt="Version">
-  <img src="https://img.shields.io/github/actions/workflow/status/gzers/volte/volte-ci.yml?style=for-the-badge&label=CI&color=00D084" alt="CI">
+  <img src="https://img.shields.io/github/v/release/Connacri/Volte?style=for-the-badge&label=Version&color=6C5CE7" alt="Version">
+  <img src="https://img.shields.io/github/actions/workflow/status/Connacri/Volte/volte-ci.yml?style=for-the-badge&label=CI&color=00D084" alt="CI">
   <img src="https://img.shields.io/badge/Flutter-3.44+-02569B?style=for-the-badge&logo=flutter&logoColor=white" alt="Flutter">
 </p>
 
@@ -32,13 +32,13 @@
 <table>
   <tr>
     <td align="center">
-      <a href="https://github.com/gzers/volte/releases/latest">
+      <a href="https://github.com/Connacri/Volte/releases/latest">
         <img src="https://img.shields.io/badge/Android-APK-3DDC84?style=for-the-badge&logo=android&logoColor=white" alt="Android APK"><br>
         <strong>volte-android-universal.apk</strong>
       </a>
     </td>
     <td align="center">
-      <a href="https://github.com/gzers/volte/releases/latest">
+      <a href="https://github.com/Connacri/Volte/releases/latest">
         <img src="https://img.shields.io/badge/Windows-Portable-0078D6?style=for-the-badge&logo=windows&logoColor=white" alt="Windows"><br>
         <strong>volte-windows.zip</strong>
       </a>
