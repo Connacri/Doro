@@ -80,14 +80,18 @@ class P2PNode {
 
     if (signalingUrl != null) {
       _signaling = SignalingClient(signalingUrl);
+      _signaling!.onConnect = () {
+        _signaling!.send({"type": "register", "id": nodeId});
+        Logger.info("Registered on signaling server");
+      };
       _signaling!.onMessage = (msg) {
+        health.ping(nodeId);
         _handleSignal(msg);
       };
-      _signaling!.send({"type": "register", "id": nodeId});
-      Logger.info("Connected to signaling server: $signalingUrl");
     }
 
     health.ping(nodeId);
+    Timer.periodic(const Duration(seconds: 10), (_) => health.ping(nodeId));
   }
 
   void _handleSignal(Map<String, dynamic> msg) {

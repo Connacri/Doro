@@ -16,6 +16,7 @@ import 'core/wallet/wallet_core.dart';
 import 'core/storage/repositories/wallet_repository.dart';
 import 'core/p2p/p2p_node.dart';
 import 'core/bootstrap/bootstrap_service.dart';
+import 'core/utils/logger.dart';
 
 class VolteApp extends StatefulWidget {
   const VolteApp({super.key});
@@ -46,8 +47,8 @@ class _VolteAppState extends State<VolteApp> {
       if (seeds.isNotEmpty) {
         await _node.start(signalingUrl: seeds.first);
       }
-    } catch (_) {
-      // Environment sans serveur signaling
+    } catch (e) {
+      Logger.error("Bootstrap failed: $e");
     }
   }
 

@@ -1,9 +1,10 @@
 const WebSocket = require('ws');
 
-const wss = new WebSocket.Server({ port: 8080 });
+const PORT = process.env.PORT || 8080;
+const wss = new WebSocket.Server({ port: PORT });
 const peers = new Map();
 
-console.log('Volte Signaling Server running on ws://localhost:8080');
+console.log(`Volte Signaling Server running on port ${PORT}`);
 
 wss.on('connection', (ws) => {
   let registeredId = null;
