@@ -51,21 +51,19 @@ class P2PNode {
   void _wire() {
     p2p.onMessage = (from, msg) {
       try {
-        gossip.receive(from, msg);
         final data = jsonDecode(msg);
         _messageController.add({"from": from, "data": data});
-      } catch (e) {
-        Logger.error("Failed to process message from $from: $e");
-      }
-    };
 
-    gossip.onBroadcast = (data) {
-      try {
-        if (data["type"] == "tx") {
-          dag.addFromNetwork(data);
+        // NB: gossip.receive()/onBroadcast était câblé ici auparavant mais
+        // enveloppait les données dans {"from":..,"payload": raw}, donc
+        // data["type"] ne valait jamais "tx" et le DAG ne recevait jamais
+        // les transactions reçues du réseau. On route directement depuis
+        // le message décodé.
+        if (data is Map && data["type"] == "tx") {
+          dag.addFromNetwork(Map<String, dynamic>.from(data));
         }
       } catch (e) {
-        Logger.error("Failed to process broadcast: $e");
+        Logger.error("Failed to process message from $from: $e");
       }
     };
 
@@ -157,6 +155,10 @@ class P2PNode {
   }
 
   void broadcastTx(Map<String, dynamic> txData) {
+    // Commit local d'abord (dedup naturel via l'id dans DagEngine.ledger),
+    // pour que l'expéditeur voie sa propre transaction dans son Ledger
+    // même s'il est temporairement seul sur le réseau.
+    dag.addFromNetwork(txData);
     p2p.broadcast({"type": "tx", ...txData});
   }
 
