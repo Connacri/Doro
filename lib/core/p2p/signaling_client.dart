@@ -25,11 +25,6 @@ class SignalingClient {
     try {
       _channel = WebSocketChannel.connect(Uri.parse(url));
 
-      // `channel.ready` (web_socket_channel >=3.0.0) est un Future qui ne se
-      // complète qu'une fois le handshake WebSocket réellement établi (ou
-      // lève une erreur s'il échoue). C'est le bon signal de "connecté" —
-      // contrairement à l'appel immédiat après WebSocketChannel.connect(),
-      // qui ne garantit rien sur l'état réel du socket.
       _channel!.ready.then((_) {
         if (_isClosed) return;
         _wasConnected = true;
@@ -67,9 +62,6 @@ class SignalingClient {
   void _reconnect() {
     if (_isClosed) return;
 
-    // On ne déclenche onDisconnect que si on avait effectivement atteint
-    // l'état "connecté" au moins une fois — évite un onDisconnect fantôme
-    // lors d'une toute première tentative qui échoue avant tout handshake.
     if (_wasConnected) {
       _wasConnected = false;
       onDisconnect?.call();
