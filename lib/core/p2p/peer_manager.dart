@@ -19,7 +19,7 @@ class PeerManager {
 
   void registerPeer(Peer peer) {
     if (sybil.isBlocked(peer.id)) return;
-    engine.peers[peer.id] = peer;
+    engine.registerPeer(peer);
     sybil.increaseTrust(peer.id);
   }
 
