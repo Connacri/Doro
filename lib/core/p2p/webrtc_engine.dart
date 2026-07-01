@@ -8,6 +8,17 @@ class WebRTCNetworkEngine {
   final Map<String, dynamic> _pendingOffers = {};
 
   Function(String from, String msg)? onMessage;
+  void Function(String peerId)? onPeerConnected;
+  void Function(String peerId)? onPeerDisconnected;
+
+  /// Point d'entrée unique pour enregistrer/mettre à jour un peer.
+  /// Tout code qui ajoute un peer (engine ou PeerManager) doit passer
+  /// par ici pour que onPeerConnected soit systématiquement déclenché.
+  void registerPeer(Peer peer) {
+    final isNew = !peers.containsKey(peer.id);
+    peers[peer.id] = peer;
+    if (isNew) onPeerConnected?.call(peer.id);
+  }
 
   Future<void> connectPeer(Peer peer) async {
     final conn = PeerConnection();
@@ -19,7 +30,7 @@ class WebRTCNetworkEngine {
 
     await conn.createChannel();
     _connections[peer.id] = conn;
-    peers[peer.id] = peer;
+    registerPeer(peer);
   }
 
   Future<Map<String, dynamic>?> createOffer(String peerId) async {
@@ -53,7 +64,7 @@ class WebRTCNetworkEngine {
     await conn.setRemoteDescription(sdp);
     await conn.createAnswer();
     _connections[peerId] = conn;
-    peers[peerId] = Peer(id: peerId, address: "", lastSeen: DateTime.now());
+    registerPeer(Peer(id: peerId, address: "", lastSeen: DateTime.now()));
     return conn;
   }
 
@@ -79,7 +90,8 @@ class WebRTCNetworkEngine {
   void removePeer(String peerId) {
     _connections[peerId]?.close();
     _connections.remove(peerId);
-    peers.remove(peerId);
+    final existed = peers.remove(peerId) != null;
+    if (existed) onPeerDisconnected?.call(peerId);
   }
 
   Future<void> dispose() async {
