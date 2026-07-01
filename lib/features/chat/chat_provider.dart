@@ -38,6 +38,7 @@ StreamSubscription<void>? _networkSub;          // ← ajouté
   @override
   void dispose() {
     _sub?.cancel();
+_networkSub?.cancel();
     super.dispose();
   }
 }
