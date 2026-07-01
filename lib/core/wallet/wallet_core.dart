@@ -14,6 +14,12 @@ class WalletCore {
     return wallet;
   }
 
+  /// Réinjecte un wallet déjà existant (ex: rechargé depuis le repository)
+  /// sans réinitialiser son solde à zéro.
+  void restore(Wallet wallet) {
+    _wallets[wallet.address] = wallet;
+  }
+
   Wallet? get(String address) => _wallets[address];
 
   List<Wallet> all() => _wallets.values.toList();
