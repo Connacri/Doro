@@ -47,10 +47,10 @@
 ## 📸 Aperçu
 
 <p align="center">
-  <img src="assets/screenshots/wallet.png" width="200" alt="Wallet">
-  <img src="assets/screenshots/network.png" width="200" alt="Réseau — Mon ID">
-  <img src="assets/screenshots/chat.png" width="200" alt="Chat">
-  <img src="assets/screenshots/ledger.png" width="200" alt="Ledger">
+  <img src="assets/screenshots/wallet.jpg" width="200" alt="Wallet">
+  <img src="assets/screenshots/network.jpg" width="200" alt="Réseau — Mon ID">
+  <img src="assets/screenshots/chat.jpg" width="200" alt="Chat">
+  <img src="assets/screenshots/ledger.jpg" width="200" alt="Ledger">
 </p>
 
 <p align="center"><sub>Placez vos captures d'écran dans <code>docs/screenshots/</code> pour qu'elles s'affichent ici.</sub></p>
