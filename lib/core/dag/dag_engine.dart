@@ -1,5 +1,6 @@
 import 'transaction_model.dart';
 import 'finality_engine.dart';
+import '../wallet/genesis.dart';
 
 enum DagAcceptResult {
   accepted,
@@ -71,13 +72,18 @@ class DagEngine {
 
     if (!_parentsKnown(tx)) return DagAcceptResult.rejectedUnknownParents;
 
-    final last = _lastNonce[tx.from];
-    if (last != null && tx.nonce <= last) {
-      return DagAcceptResult.rejectedReplay;
+    // La tx genesis n'a pas de nonce (from = adresse de mint)
+    if (!Genesis.isMintAddress(tx.from)) {
+      final last = _lastNonce[tx.from];
+      if (last != null && tx.nonce <= last) {
+        return DagAcceptResult.rejectedReplay;
+      }
     }
 
     ledger[tx.id] = tx;
-    _lastNonce[tx.from] = tx.nonce;
+    if (!Genesis.isMintAddress(tx.from)) {
+      _lastNonce[tx.from] = tx.nonce;
+    }
     onCommit?.call(tx);
 
     final pending = _pendingConfirmations.remove(tx.id);

@@ -96,7 +96,53 @@ class WalletProvider extends ChangeNotifier {
     wallet ??= core.create(address, pubKeyHex);
 
     if (Genesis.isGenesisAddress(address) && wallet.balance == BigInt.zero) {
-      core.debugFaucet(address, Genesis.maxSupply);
+      if (node != null) {
+        final unsigned = Transaction(
+          id: IdGenerator.generateId("genesis"),
+          from: Genesis.genesisMintAddress,
+          to: address,
+          amount: Genesis.maxSupply,
+          parents: const [],
+          timestamp: DateTime.now().millisecondsSinceEpoch,
+          nonce: 0,
+          senderPublicKey: pubKeyHex,
+          signature: "",
+        );
+
+        final signature = await _crypto.sign(
+          utf8.encode(unsigned.hash),
+          keyPair: keyPair,
+        );
+
+        final genesisTx = Transaction(
+          id: unsigned.id,
+          from: unsigned.from,
+          to: unsigned.to,
+          amount: unsigned.amount,
+          parents: unsigned.parents,
+          timestamp: unsigned.timestamp,
+          nonce: unsigned.nonce,
+          senderPublicKey: unsigned.senderPublicKey,
+          signature: _bytesToHex(signature.bytes),
+        );
+
+        final result = node!.dag.addValidated(genesisTx);
+        if (result == DagAcceptResult.accepted) {
+          node!.p2p.broadcast({"type": "tx", ...genesisTx.toJson()});
+          node!.dag.confirm(genesisTx.id, node!.nodeId);
+          node!.p2p.broadcast({
+            "type": "tx_approve",
+            "txId": genesisTx.id,
+            "approver": node!.nodeId,
+          });
+          Logger.info("Transaction genesis diffusée sur le réseau");
+        } else {
+          Logger.warn("Transaction genesis refusée par le DAG local : $result");
+          core.debugFaucet(address, Genesis.maxSupply);
+        }
+      } else {
+        core.debugFaucet(address, Genesis.maxSupply);
+      }
       Logger.info("Wallet fondateur restauré : allocation génésis créditée");
     }
 

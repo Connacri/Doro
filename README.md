@@ -1,15 +1,15 @@
 <p align="center">
-  <img src="https://img.shields.io/github/v/release/Connacri/Volte?style=for-the-badge&label=Version&color=6C5CE7" alt="Version">
-  <img src="https://img.shields.io/github/actions/workflow/status/Connacri/Volte/volte-ci.yml?style=for-the-badge&label=CI&color=00D084" alt="CI">
+  <img src="https://img.shields.io/github/v/release/Connacri/Doro?style=for-the-badge&label=Version&color=6C5CE7" alt="Version">
+  <img src="https://img.shields.io/github/actions/workflow/status/Connacri/Doro/doro-ci.yml?style=for-the-badge&label=CI&color=00D084" alt="CI">
   <img src="https://img.shields.io/badge/Flutter-3.44+-02569B?style=for-the-badge&logo=flutter&logoColor=white" alt="Flutter">
   <img src="https://img.shields.io/badge/License-MIT-yellow?style=for-the-badge" alt="License">
 </p>
 
-<h1 align="center">⚡ Volte</h1>
+<h1 align="center">⚡ Doro</h1>
 <p align="center"><strong>Réseau décentralisé P2P — Communications, portefeuille et registre distribué.</strong></p>
 
 <p align="center">
-  Volte est un réseau peer-to-peer 100&nbsp;% décentralisé : aucun serveur central ne détient vos
+  Doro est un réseau peer-to-peer 100&nbsp;% décentralisé : aucun serveur central ne détient vos
   données, vos fonds ou vos messages. Chiffrement Ed25519, consensus BFT, gossip protocol,
   registre DAG et messagerie instantanée — le tout connecté directement entre appareils via WebRTC.
 </p>
@@ -35,7 +35,7 @@
 | 🗣️ **Gossip** | Protocole de diffusion avec déduplication et contrôle TTL |
 | 📋 **DAG Ledger** | Registre distribué en DAG avec détection de double-dépense |
 | ✅ **Consensus** | BFT avec vote pondéré et score de réputation |
-| 💰 **Wallet** | Portefeuille natif (NovaCoin) — le solde de départ n'existe que sur *votre* appareil, jamais dupliqué chez vos pairs |
+| 💰 **Wallet** | Portefeuille natif (DoroCoin) — le solde de départ n'existe que sur *votre* appareil, jamais dupliqué chez vos pairs |
 | 💬 **Chat** | Messagerie instantanée P2P, diffusée directement à vos pairs connectés |
 | 🔄 **Sync** | Synchronisation d'état avec horloge vectorielle |
 
@@ -60,15 +60,15 @@
 <table>
   <tr>
     <td align="center">
-      <a href="https://github.com/Connacri/Volte/releases/latest">
+      <a href="https://github.com/Connacri/Doro/releases/latest">
         <img src="https://img.shields.io/badge/Android-APK-3DDC84?style=for-the-badge&logo=android&logoColor=white" alt="Android APK"><br>
-        <strong>volte-android-universal.apk</strong>
+        <strong>doro-android-universal.apk</strong>
       </a>
     </td>
     <td align="center">
-      <a href="https://github.com/Connacri/Volte/releases/latest">
+      <a href="https://github.com/Connacri/Doro/releases/latest">
         <img src="https://img.shields.io/badge/Windows-Portable-0078D6?style=for-the-badge&logo=windows&logoColor=white" alt="Windows"><br>
-        <strong>volte-windows.zip</strong>
+        <strong>doro-windows.zip</strong>
       </a>
     </td>
   </tr>
@@ -80,7 +80,7 @@
 
 ## 📖 Tutoriel d'utilisation
 
-Pour tester Volte dans de bonnes conditions, utilisez **deux instances de l'application**
+Pour tester Doro dans de bonnes conditions, utilisez **deux instances de l'application**
 (deux téléphones, ou un téléphone et un PC/émulateur). Tout se passe en 5 étapes.
 
 ### 1. Premier lancement
@@ -134,7 +134,7 @@ direct au chat en un tap.
 
 ### Principe
 
-Chaque wallet Volte est protégé par une **seed** (clé privée) Ed25519 de **64 caractères hexadécimaux**.
+Chaque wallet Doro est protégé par une **seed** (clé privée) Ed25519 de **64 caractères hexadécimaux**.
 C'est la seule et unique clé qui permet de dépenser les fonds de ce wallet et de le restaurer
 sur un autre appareil. Pas de mot de passe, pas de serveur central — **qui possède la seed possède
 le wallet**.
@@ -153,7 +153,7 @@ le wallet**.
    de mots de passe chiffré (KeePass, Bitwarden, etc.).
 6. Confirmez en appuyant sur **"J'ai sauvegardé ma seed"**.
 
-> ⚠️ **La seed n'est affichée qu'une seule fois**, juste après la création du wallet. Volte ne
+> ⚠️ **La seed n'est affichée qu'une seule fois**, juste après la création du wallet. Doro ne
 > la stocke que dans le Keystore sécurisé de votre appareil (Android Keystore / iOS Keychain) —
 > elle n'est ni envoyée sur un serveur, ni stockée en clair dans les préférences. Si vous la
 > perdez, personne ne pourra jamais récupérer vos fonds.
@@ -174,7 +174,7 @@ le wallet**.
 Si vous perdez votre téléphone ou PC, ou si vous voulez accéder à vos fonds depuis un autre
 appareil :
 
-1. **Installez Volte** sur le nouvel appareil.
+1. **Installez Doro** sur le nouvel appareil.
 2. Ouvrez l'onglet **Wallet** 💰.
 3. Appuyez sur l'icône **🔑 (clé)** dans la barre d'action.
 4. Collez votre **seed hex** (64 caractères) dans le champ.
@@ -192,7 +192,7 @@ appareil :
 ### Cas du wallet fondateur
 
 Le wallet fondateur (adresse `0x05ef5fa9991402ede9e8339d715469276c908b7d`) est le seul wallet
-qui possède un solde de départ non nul (l'allocation génésis de **21 millions NOVA**). Il suit
+qui possède un solde de départ non nul (l'allocation génésis de **21 millions DORO**). Il suit
 exactement le même processus de sauvegarde et de récupération que n'importe quel autre wallet :
 - Importez la seed hex correspondante via l'icône 🔑.
 - Le solde de départ est automatiquement crédité si l'adresse dérivée correspond à l'adresse
@@ -203,29 +203,29 @@ exactement le même processus de sauvegarde et de récupération que n'importe q
 ## 📐 Architecture
 
 ```
-┌──────────────────────────────────────────────┐
-│                   Volte App                    │
-├──────────────────────────────────────────────┤
-│  ┌─────────┐  ┌──────┐  ┌────────┐  ┌─────┐  │
-│  │ Wallet  │  │ Chat │  │ Ledger │  │Network│  │
-│  └────┬────┘  └──┬───┘  └───┬────┘  └──┬───┘  │
-│       └──────────┼──────────┼──────────┘       │
-│                  ▼          ▼                   │
-│  ┌──────────────────────────────────────────┐  │
+┌──────────────────────────────────────────────────┐
+│                      Doro App                    │
+├──────────────────────────────────────────────────┤
+│  ┌─────────┐  ┌──────┐  ┌────────┐  ┌─────────┐  │
+│  │ Wallet  │  │ Chat │  │ Ledger │  │ Network │  │
+│  └────┬────┘  └──┬───┘  └───┬────┘  └──┬──────┘  │
+│       └──────────┼──────────┼──────────┘         │
+│                  ▼          ▼                    │
+│  ┌────────────────────────────────────────────┐  │
 │  │              P2PNode                       │  │
-│  │  ┌────────┐ ┌──────┐ ┌─────┐ ┌────────┐  │  │
-│  │  │Crypto  │ │Gossip│ │ DAG │ │Consensus│  │  │
-│  │  │Ed25519 │ │Engine│ │Engine│ │  BFT    │  │  │
-│  │  └────────┘ └──────┘ └─────┘ └────────┘  │  │
-│  │  ┌────────┐ ┌──────────┐ ┌─────────────┐  │  │
+│  │  ┌────────┐ ┌──────┐ ┌──────┐ ┌─────────┐  │  │
+│  │  │Crypto  │ │Gossip│ │  DAG │ │Consensus│  │  │
+│  │  │Ed25519 │ │Engine│ │Engine│ │   BFT   │  │  │
+│  │  └────────┘ └──────┘ └──────┘ └─────────┘  │  │
+│  │  ┌────────┐ ┌──────────┐ ┌──────────────┐  │  │
 │  │  │WebRTC  │ │  Signal  │ │  SyncEngine  │  │  │
 │  │  │ Engine │ │  Client  │ │ (VectorClock)│  │  │
-│  │  └────────┘ └──────────┘ └─────────────┘  │  │
-│  │  ┌────────────────────────────────────┐    │  │
-│  │  │  NodeIdentity (ID persistant local) │    │  │
-│  │  └────────────────────────────────────┘    │  │
-│  └──────────────────────────────────────────┘  │
-└──────────────────────────────────────────────┘
+│  │  └────────┘ └──────────┘ └──────────────┘  │  │
+│  │  ┌─────────────────────────────────────┐   │  │
+│  │  │  NodeIdentity (ID persistant local) │   │  │
+│  │  └─────────────────────────────────────┘   │  │
+│  └────────────────────────────────────────────┘  │
+└──────────────────────────────────────────────────┘
 ```
 
 ## 🛠️ Build local

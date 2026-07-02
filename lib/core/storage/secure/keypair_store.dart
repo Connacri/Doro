@@ -12,7 +12,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 /// les autres de vérifier l'authenticité des futures transactions).
 class KeypairStore {
   static const _storage = FlutterSecureStorage();
-  static const _prefix = 'volte_privkey_';
+  static const _prefix = 'doro_privkey_';
 
   static Future<void> save(String address, SimpleKeyPair keyPair) async {
     final seed = await keyPair.extractPrivateKeyBytes();

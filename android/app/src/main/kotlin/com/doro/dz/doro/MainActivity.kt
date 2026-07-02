@@ -1,4 +1,4 @@
-package com.volte.dz.volte
+package com.doro.dz.doro
 
 import io.flutter.embedding.android.FlutterActivity
 

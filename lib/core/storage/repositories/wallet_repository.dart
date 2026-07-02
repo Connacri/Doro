@@ -5,7 +5,7 @@ import '../../wallet/wallet_model.dart';
 
 class WalletRepository {
   final List<Wallet> _cache = [];
-  static const String _key = 'volte_wallets';
+  static const String _key = 'doro_wallets';
 
   Future<void> save(Wallet w) async {
     _cache.add(w);

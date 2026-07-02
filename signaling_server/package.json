@@ -1,7 +1,7 @@
 {
-  "name": "volte-signaling-server",
+  "name": "doro-signaling-server",
   "version": "1.0.0",
-  "description": "Signaling server for Volte P2P WebRTC coordination",
+  "description": "Signaling server for Doro P2P WebRTC coordination",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",

@@ -17,14 +17,14 @@ import 'core/p2p/p2p_node.dart';
 import 'core/bootstrap/bootstrap_service.dart';
 import 'core/utils/logger.dart';
 import 'core/utils/node_identity.dart';
-class VolteApp extends StatefulWidget {
-  const VolteApp({super.key});
+class DoroApp extends StatefulWidget {
+  const DoroApp({super.key});
 
   @override
-  State<VolteApp> createState() => _VolteAppState();
+  State<DoroApp> createState() => _DoroAppState();
 }
 
-class _VolteAppState extends State<VolteApp> {
+class _DoroAppState extends State<DoroApp> {
   P2PNode? _node;
   late final WalletRepository _walletRepo;
 

@@ -3,5 +3,5 @@ import 'app.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  runApp(const VolteApp());
+  runApp(const DoroApp());
 }

@@ -8,7 +8,7 @@ import '../../core/wallet/token_config.dart';
 
 /// Formate un solde stocké en unité atomique (18 décimales) en un montant
 /// lisible.
-String formatNova(BigInt atomicBalance) {
+String formatDoro(BigInt atomicBalance) {
   const decimals = 18;
   final divisor = BigInt.from(10).pow(decimals);
   final whole = atomicBalance ~/ divisor;
@@ -133,7 +133,7 @@ class WalletScreen extends StatelessWidget {
         SnackBar(
           content: Text(
             isGenesis
-                ? "Wallet fondateur restauré — solde ${formatNova(wallet.balance)}"
+                ? "Wallet fondateur restauré — solde ${formatDoro(wallet.balance)}"
                 : "Wallet importé : ${wallet.address}",
           ),
         ),
@@ -192,7 +192,7 @@ class WalletScreen extends StatelessWidget {
                 overflow: TextOverflow.ellipsis,
               ),
               subtitle: Text(
-                formatNova(w.balance),
+                formatDoro(w.balance),
                 style: TextStyle(
                   fontWeight: FontWeight.bold,
                   color: isGenesis ? Colors.amber[800] : null,

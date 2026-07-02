@@ -5,10 +5,10 @@
 // 'flutter create' template.
 
 // The application's name. By default this is also the title of the Flutter window.
-PRODUCT_NAME = volte
+PRODUCT_NAME = doro
 
 // The application's bundle identifier
-PRODUCT_BUNDLE_IDENTIFIER = com.volte.dz.volte
+PRODUCT_BUNDLE_IDENTIFIER = com.doro.dz.doro
 
 // The copyright displayed in application information
-PRODUCT_COPYRIGHT = Copyright © 2026 com.volte.dz. All rights reserved.
+PRODUCT_COPYRIGHT = Copyright © 2026 com.doro.dz. All rights reserved.

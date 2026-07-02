@@ -1,4 +1,4 @@
-name: volte-ci
+name: doro-ci
 
 on:
   push:
@@ -139,31 +139,31 @@ jobs:
           VERSION="${{ needs.version.outputs.version }}"
           mkdir -p release
           cp build/app/outputs/flutter-apk/app-arm64-v8a-release.apk \
-             "release/volte-android-arm64-v8a-$VERSION.apk" 2>/dev/null || true
+             "release/doro-android-arm64-v8a-$VERSION.apk" 2>/dev/null || true
           cp build/app/outputs/flutter-apk/app-release.apk \
-             "release/volte-android-universal-$VERSION.apk"
+             "release/doro-android-universal-$VERSION.apk"
           cp build/app/outputs/bundle/release/app-release.aab \
-             "release/volte-android-$VERSION.aab"
+             "release/doro-android-$VERSION.aab"
 
       - name: Upload APK (universal)
         uses: actions/upload-artifact@v4
         with:
           name: android-apk
-          path: release/volte-android-universal-*.apk
+          path: release/doro-android-universal-*.apk
           retention-days: 30
 
       - name: Upload APK (arm64)
         uses: actions/upload-artifact@v4
         with:
           name: android-apk-arm64
-          path: release/volte-android-arm64-v8a-*.apk
+          path: release/doro-android-arm64-v8a-*.apk
           retention-days: 30
 
       - name: Upload AAB
         uses: actions/upload-artifact@v4
         with:
           name: android-aab
-          path: release/volte-android-*.aab
+          path: release/doro-android-*.aab
           retention-days: 30
 
   ##############################################################################
@@ -198,13 +198,13 @@ jobs:
           $VERSION = "${{ needs.version.outputs.version }}"
           New-Item -ItemType Directory -Force -Path release
           Compress-Archive -Path "build\windows\x64\runner\Release\*" `
-            -DestinationPath "release\volte-windows-$VERSION.zip"
+            -DestinationPath "release\doro-windows-$VERSION.zip"
 
       - name: Upload Windows
         uses: actions/upload-artifact@v4
         with:
           name: windows-portable
-          path: release/volte-windows-*.zip
+          path: release/doro-windows-*.zip
           retention-days: 30
 
   ##############################################################################
@@ -250,9 +250,9 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ needs.version.outputs.version }}
-          name: Volte v${{ needs.version.outputs.version }}
-          body: |
-            ## Volte v${{ needs.version.outputs.version }}
+            name: Doro v${{ needs.version.outputs.version }}
+            body: |
+              ## Doro v${{ needs.version.outputs.version }}
 
             **Réseau décentralisé P2P** — Communications, portefeuille et registre distribué.
 
@@ -262,10 +262,10 @@ jobs:
             ### 📦 Téléchargements
             | Plateforme | Fichier |
             |------------|---------|
-            | 📱 Android (universel) | `volte-android-universal-${{ needs.version.outputs.version }}.apk` |
-            | 📱 Android (arm64) | `volte-android-arm64-v8a-${{ needs.version.outputs.version }}.apk` |
-            | 🤖 Android (AAB) | `volte-android-${{ needs.version.outputs.version }}.aab` |
-            | 🪟 Windows | `volte-windows-${{ needs.version.outputs.version }}.zip` |
+            | 📱 Android (universel) | `doro-android-universal-${{ needs.version.outputs.version }}.apk` |
+            | 📱 Android (arm64) | `doro-android-arm64-v8a-${{ needs.version.outputs.version }}.apk` |
+            | 🤖 Android (AAB) | `doro-android-${{ needs.version.outputs.version }}.aab` |
+            | 🪟 Windows | `doro-windows-${{ needs.version.outputs.version }}.zip` |
           files: out/*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

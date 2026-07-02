@@ -13,16 +13,29 @@
 /// peut donc jamais, même par hasard, tomber sur cette adresse précise.
 /// Seul `WalletProvider.importWallet()` avec la bonne clé privée peut
 /// aboutir à `genesisAddress`.
+///
+/// La transaction genesis est créée et diffusée sur le réseau P2P comme
+/// une vraie transaction (signée avec la clé privée fondatrice). Tous les
+/// pairs l'acceptent et créditent localement le wallet fondateur.
 class Genesis {
   /// Adresse du wallet fondateur/trésorerie (Ramzi). Dérivée par
   /// sha256(clé publique) — voir AddressGenerator.generate().
   static const String genesisAddress =
       "0x05ef5fa9991402ede9e8339d715469276c908b7d";
 
+  /// Adresse "émettrice" de la transaction genesis — représente le réseau
+  /// lui-même (mint). Aucune clé privée ne correspond à cette adresse,
+  /// mais la transaction est signée avec la clé privée fondatrice pour
+  /// prouver son authenticité.
+  static const String genesisMintAddress =
+      "0x0000000000000000000000000000000000000000";
+
   /// Offre totale allouée au wallet fondateur au moment de sa création.
-  /// 21 000 000 NOVA (18 décimales), modifiable selon les besoins.
+  /// 50 000 000 DORO (18 décimales), modifiable selon les besoins.
   static final BigInt maxSupply =
       BigInt.from(50000000) * BigInt.from(10).pow(18);
 
   static bool isGenesisAddress(String address) => address == genesisAddress;
+
+  static bool isMintAddress(String address) => address == genesisMintAddress;
 }

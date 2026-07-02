@@ -4,7 +4,7 @@ const PORT = process.env.PORT || 8080;
 const wss = new WebSocket.Server({ port: PORT });
 const peers = new Map();
 
-console.log(`Volte Signaling Server running on port ${PORT}`);
+console.log(`Doro Signaling Server running on port ${PORT}`);
 
 wss.on('connection', (ws) => {
   let registeredId = null;
