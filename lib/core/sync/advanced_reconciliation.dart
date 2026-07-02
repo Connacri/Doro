@@ -19,7 +19,7 @@ class AdvancedReconciliation {
         final existing = map[tx.id]!;
 
         // stronger rule: approvals + timestamp
-        if (tx.approvals.length > existing.approvals.length) {
+        if (tx.parents.length > existing.parents.length) {
           map[tx.id] = tx;
         }
       }
