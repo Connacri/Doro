@@ -57,10 +57,10 @@ class WalletCore {
     return true;
   }
 
-  /// Fonds de test explicites, pour le développement uniquement.
-  /// À n'appeler que pour MON wallet local (jamais automatiquement pour
-  /// un wallet appartenant à un pair) : c'est ça qui garantit que le
-  /// solde de départ n'existe que chez moi.
+  /// Crédit unique réservé à l'allocation génésis (voir `Genesis` et
+  /// `WalletProvider.importWallet`). N'est plus JAMAIS appelé pour un
+  /// wallet créé normalement via `createWallet()` — ceux-là démarrent
+  /// systématiquement à zéro.
   bool debugFaucet(String address, BigInt amount) {
     final wallet = _wallets[address];
     if (wallet == null) return false;
