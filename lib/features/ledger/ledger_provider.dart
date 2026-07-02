@@ -7,12 +7,15 @@ class LedgerProvider extends ChangeNotifier {
   final P2PNode node;
 
   LedgerProvider(this.node) {
-    // Le DagEngine du node notifie déjà `sync.push(tx)` à chaque commit ;
-    // on se branche dessus en plus pour rafraîchir l'UI Ledger en temps réel,
-    // que la tx vienne du réseau ou d'un envoi wallet local.
     final previousOnCommit = dag.onCommit;
     dag.onCommit = (tx) {
       previousOnCommit?.call(tx);
+      notifyListeners();
+    };
+
+    final previousOnFinalized = dag.onFinalized;
+    dag.onFinalized = (tx) {
+      previousOnFinalized?.call(tx);
       notifyListeners();
     };
   }
@@ -23,5 +26,9 @@ class LedgerProvider extends ChangeNotifier {
     dag.add(tx);
   }
 
-  List<Transaction> get transactions => dag.all();
+  List<Transaction> get transactions =>
+      dag.all()..sort((a, b) => b.timestamp.compareTo(a.timestamp));
+
+  bool isFinal(String txId) => dag.isFinal(txId);
+  int confirmationsOf(String txId) => dag.confirmersCountOf(txId);
 }
