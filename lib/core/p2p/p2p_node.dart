@@ -1,9 +1,13 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:cryptography/cryptography.dart';
+
 import '../crypto/signature.dart';
 import '../gossip/gossip_engine.dart';
 import '../dag/dag_engine.dart';
+import '../dag/tx_validator.dart';
+import '../dag/transaction_model.dart';
 import '../sync/sync_engine.dart';
 import '../consensus/consensus_engine.dart';
 import '../consensus/reputation_score.dart';
@@ -27,6 +31,13 @@ class P2PNode {
   late final NetworkHealth health;
   late final PeerManager peerManager;
 
+  final TxValidator _txValidator = TxValidator();
+
+  /// Dédoublonnage des relais d'approbation ("tx_approve"), par
+  /// `"txId:approverId"`, pour éviter une boucle de rediffusion infinie
+  /// dans un mesh où plusieurs pairs sont connectés entre eux.
+  final Set<String> _seenApprovals = {};
+
   final StreamController<Map<String, dynamic>> _messageController =
       StreamController<Map<String, dynamic>>.broadcast();
 
@@ -40,9 +51,10 @@ class P2PNode {
   final StreamController<void> _walletChangeController =
       StreamController<void>.broadcast();
 
-  /// Émet un événement chaque fois que MON wallet local est crédité par
-  /// une transaction reçue du réseau (donc jamais pour un solde qui ne
-  /// m'appartient pas).
+  /// Émet un événement chaque fois que MON wallet local est crédité —
+  /// ce qui n'arrive désormais QU'après qu'une transaction a été validée
+  /// (signature correcte) ET confirmée par au moins un pair distinct de
+  /// l'émetteur (voir `DagEngine.finality`).
   Stream<void> get walletChanges => _walletChangeController.stream;
 
   SignalingClient? _signaling;
@@ -50,11 +62,11 @@ class P2PNode {
 
   bool isSignalingConnected = false;
 
-  P2PNode(this.nodeId) {
+  P2PNode(this.nodeId, {int requiredConfirmations = 1}) {
     crypto = CryptoService();
     p2p = WebRTCNetworkEngine();
     gossip = GossipEngine();
-    dag = DagEngine();
+    dag = DagEngine(requiredConfirmations: requiredConfirmations);
     sync = SyncEngine();
     consensus = ConsensusEngine(ReputationScore());
     wallet = WalletCore();
@@ -66,33 +78,7 @@ class P2PNode {
 
   void _wire() {
     p2p.onMessage = (from, msg) {
-      try {
-        final data = jsonDecode(msg);
-        _messageController.add({"from": from, "data": data});
-
-        if (data is Map && data["type"] == "tx") {
-          final txMap = Map<String, dynamic>.from(data);
-          dag.addFromNetwork(txMap);
-
-          // Crédit réel côté récepteur : seulement si l'adresse "to" est
-          // un wallet que JE possède localement (creditIfLocal renvoie
-          // false sinon). C'est ce qui rend le solde reçu réel, plutôt
-          // que juste une entrée de journal sans effet.
-          final to = txMap["to"] as String?;
-          final amountStr = txMap["amount"] as String?;
-          if (to != null && amountStr != null) {
-            final amount = BigInt.tryParse(amountStr);
-            if (amount != null) {
-              final credited = wallet.creditIfLocal(to, amount);
-              if (credited && !_walletChangeController.isClosed) {
-                _walletChangeController.add(null);
-              }
-            }
-          }
-        }
-      } catch (e) {
-        Logger.error("Failed to process message from $from: $e");
-      }
+      _handleIncoming(from, msg);
     };
 
     dag.onCommit = (tx) {
@@ -118,11 +104,149 @@ class P2PNode {
     };
   }
 
+  Future<void> _handleIncoming(String from, String msg) async {
+    try {
+      final data = jsonDecode(msg);
+      _messageController.add({"from": from, "data": data});
+
+      if (data is! Map) return;
+      final map = Map<String, dynamic>.from(data);
+
+      switch (map["type"]) {
+        case "tx":
+          await _handleIncomingTx(map);
+          break;
+        case "tx_approve":
+          _handleIncomingApprove(map);
+          break;
+      }
+    } catch (e) {
+      Logger.error("Failed to process message from $from: $e");
+    }
+  }
+
+  /// Chemin complet de réception d'une transaction :
+  ///  1. validation structurelle (montant, adresses, adresse ⇔ clé publique)
+  ///  2. vérification cryptographique de la signature Ed25519
+  ///  3. insertion dans le DAG (immuabilité + chaînage + anti-rejeu)
+  ///  4. si acceptée : je diffuse MON vote de validation aux autres pairs,
+  ///     et je relaie la tx elle-même pour aider sa propagation.
+  /// Le crédit du solde du destinataire n'intervient QUE plus tard, quand
+  /// la tx atteint la finalité (voir _handleIncomingApprove).
+  Future<void> _handleIncomingTx(Map<String, dynamic> data) async {
+    late final Transaction tx;
+    try {
+      tx = Transaction.fromJson(data);
+    } catch (e) {
+      Logger.warn("Tx malformée ignorée : $e");
+      return;
+    }
+
+    if (!_txValidator.validate(tx)) {
+      Logger.warn("Tx ${tx.id} rejetée : validation structurelle échouée");
+      return;
+    }
+
+    if (!await _verifySignature(tx)) {
+      Logger.warn("Tx ${tx.id} rejetée : signature invalide");
+      return;
+    }
+
+    final result = dag.addValidated(tx);
+    switch (result) {
+      case DagAcceptResult.accepted:
+        // Je viens de valider cette tx moi-même : je le fais savoir aux
+        // autres pairs (c'est ÇA, "validée par d'autres" — chaque pair qui
+        // la reçoit et la valide vote pour elle).
+        p2p.broadcast({"type": "tx_approve", "txId": tx.id, "approver": nodeId});
+        // Je relaie aussi la tx d'origine, pour qu'elle atteigne des pairs
+        // qui ne sont pas directement connectés à son émetteur.
+        p2p.broadcast({"type": "tx", ...tx.toJson()});
+
+        // Si des confirmations étaient déjà arrivées avant la tx elle-même
+        // (réseau asynchrone), il est possible qu'elle soit déjà finale.
+        if (dag.isFinal(tx.id)) {
+          _creditIfFinalizedHere(tx);
+        }
+        break;
+      case DagAcceptResult.rejectedTampered:
+        Logger.error(
+          "Tx ${tx.id} REJETÉE : contenu falsifié — le hash ne correspond "
+          "pas à la version déjà connue de cette transaction.",
+        );
+        break;
+      case DagAcceptResult.rejectedUnknownParents:
+        Logger.warn("Tx ${tx.id} en attente : parents inconnus localement");
+        break;
+      case DagAcceptResult.rejectedReplay:
+        Logger.error("Tx ${tx.id} REJETÉE : nonce déjà utilisé (tentative de rejeu)");
+        break;
+      case DagAcceptResult.alreadyKnown:
+        break;
+    }
+  }
+
+  void _handleIncomingApprove(Map<String, dynamic> data) {
+    final txId = data["txId"] as String?;
+    final approver = data["approver"] as String?;
+    if (txId == null || approver == null) return;
+    if (approver == nodeId) return;
+
+    final key = "$txId:$approver";
+    if (_seenApprovals.contains(key)) return;
+    _seenApprovals.add(key);
+
+    final justFinalized = dag.confirm(txId, approver);
+
+    // Relai borné : chaque (tx, approbateur) n'est rediffusé qu'une fois
+    // par node, ce qui propage l'info sans boucle infinie dans un mesh.
+    p2p.broadcast({"type": "tx_approve", "txId": txId, "approver": approver});
+
+    if (justFinalized) {
+      final tx = dag.ledger[txId];
+      if (tx != null) _creditIfFinalizedHere(tx);
+    }
+  }
+
+  void _creditIfFinalizedHere(Transaction tx) {
+    final credited = wallet.creditIfLocal(tx.to, tx.amount);
+    if (credited && !_walletChangeController.isClosed) {
+      _walletChangeController.add(null);
+    }
+  }
+
+  /// Vérifie que `tx.signature` est bien une signature Ed25519 valide de
+  /// `tx.hash` par la clé publique `tx.senderPublicKey`. C'est ce qui
+  /// garantit qu'une transaction n'a pu être créée que par le détenteur
+  /// de la clé privée de l'adresse émettrice — personne d'autre ne peut
+  /// forger une tx en usurpant `from`.
+  Future<bool> _verifySignature(Transaction tx) async {
+    try {
+      final publicKey = SimplePublicKey(
+        _hexToBytes(tx.senderPublicKey),
+        type: KeyPairType.ed25519,
+      );
+      final signature = Signature(
+        _hexToBytes(tx.signature),
+        publicKey: publicKey,
+      );
+      return await crypto.verify(utf8.encode(tx.hash), signature: signature);
+    } catch (e) {
+      Logger.warn("Signature illisible pour tx ${tx.id} : $e");
+      return false;
+    }
+  }
+
+  List<int> _hexToBytes(String hex) {
+    final bytes = <int>[];
+    for (var i = 0; i < hex.length; i += 2) {
+      bytes.add(int.parse(hex.substring(i, i + 2), radix: 16));
+    }
+    return bytes;
+  }
+
   Future<void> start({String? signalingUrl}) async {
     Logger.info("Starting P2P node: $nodeId");
-
-    await crypto.generateKeyPair();
-    Logger.info("Node identity generated");
 
     if (signalingUrl != null) {
       _signaling = SignalingClient(signalingUrl);
@@ -224,7 +348,7 @@ class P2PNode {
   Future<void> connectPeer(String addr) async {
     final peerId = addr.trim();
     if (peerId.isEmpty || peerId == nodeId) return;
-    if (p2p.peers.containsKey(peerId)) return; // déjà connecté
+    if (p2p.peers.containsKey(peerId)) return;
     if (_signaling == null || !isSignalingConnected) {
       throw StateError(
         "Non connecté au serveur de signaling — impossible d'ajouter un pair pour l'instant.",
@@ -233,9 +357,17 @@ class P2PNode {
     await connectToPeer(peerId);
   }
 
-  void broadcastTx(Map<String, dynamic> txData) {
-    dag.addFromNetwork(txData);
-    p2p.broadcast({"type": "tx", ...txData});
+  /// Diffuse une transaction déjà signée par MOI. L'appelant (WalletProvider)
+  /// garantit l'authenticité en signant avec la clé privée du wallet
+  /// émetteur avant d'appeler cette méthode. L'insertion locale passe quand
+  /// même par `addValidated` pour garder les mêmes garanties d'intégrité
+  /// (immuabilité, chaînage, anti-rejeu) que pour une tx reçue du réseau.
+  DagAcceptResult broadcastTx(Transaction tx) {
+    final result = dag.addValidated(tx);
+    if (result == DagAcceptResult.accepted) {
+      p2p.broadcast({"type": "tx", ...tx.toJson()});
+    }
+    return result;
   }
 
   void sendChat(String text) {
