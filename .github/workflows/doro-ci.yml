@@ -250,9 +250,9 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ needs.version.outputs.version }}
-            name: Doro v${{ needs.version.outputs.version }}
-            body: |
-              ## Doro v${{ needs.version.outputs.version }}
+          name: Doro v${{ needs.version.outputs.version }}
+          body: |
+            ## Doro v${{ needs.version.outputs.version }}
 
             **Réseau décentralisé P2P** — Communications, portefeuille et registre distribué.
 
