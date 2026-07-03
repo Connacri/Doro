@@ -51,6 +51,10 @@ class P2PNode {
   /// dans un mesh où plusieurs pairs sont connectés entre eux.
   final Set<String> _seenApprovals = {};
 
+  /// Dédoublonnage des messages de chat pour éviter les boucles infinies
+  /// lors du relai (gossip).
+  final Set<String> _seenChatMessages = {};
+
   final StreamController<Map<String, dynamic>> _messageController =
   StreamController<Map<String, dynamic>>.broadcast();
 
@@ -140,7 +144,6 @@ class P2PNode {
   Future<void> _handleIncoming(String from, String msg) async {
     try {
       final data = jsonDecode(msg);
-      _messageController.add({"from": from, "data": data});
 
       if (data is! Map) return;
       final map = Map<String, dynamic>.from(data);
@@ -151,6 +154,9 @@ class P2PNode {
           break;
         case "tx_approve":
           await _handleIncomingApprove(map);
+          break;
+        case "chat":
+          _handleIncomingChat(from, map);
           break;
         case "sync_request":
           _handleSyncRequest(map);
@@ -409,6 +415,26 @@ class P2PNode {
     }
   }
 
+  void _handleIncomingChat(String from, Map<String, dynamic> data) {
+    final fromId = data["from"] as String?;
+    final text = data["text"] as String?;
+    final time = data["time"] as String?;
+
+    if (fromId == null || text == null || time == null) return;
+    if (fromId == nodeId) return;
+
+    // Utilisation d'une clé composite pour le dédoublonnage
+    final msgKey = "$fromId:$time:${text.hashCode}";
+    if (_seenChatMessages.contains(msgKey)) return;
+    _seenChatMessages.add(msgKey);
+
+    // Émettre pour l'UI locale
+    _messageController.add({"from": from, "data": data});
+
+    // Relayer aux autres pairs
+    p2p.broadcast(data);
+  }
+
   void _creditIfFinalizedHere(Transaction tx) {
     final credited = wallet.creditIfLocal(tx.to, tx.amount);
     if (credited && !_walletChangeController.isClosed) {
@@ -578,12 +604,19 @@ class P2PNode {
   }
 
   void sendChat(String text) {
-    p2p.broadcast({
+    final time = DateTime.now().toIso8601String();
+    final data = {
       "type": "chat",
       "from": nodeId,
       "text": text,
-      "time": DateTime.now().toIso8601String(),
-    });
+      "time": time,
+    };
+
+    // Marquer comme vu pour ne pas le traiter s'il nous revient par relai
+    final msgKey = "$nodeId:$time:${text.hashCode}";
+    _seenChatMessages.add(msgKey);
+
+    p2p.broadcast(data);
   }
 
   Future<void> _loadPersistedLedger() async {

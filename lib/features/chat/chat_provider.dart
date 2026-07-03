@@ -14,7 +14,7 @@ class ChatProvider extends ChangeNotifier {
     _sub = node.messages.listen((msg) {
       final data = msg["data"];
 
-      if (data is Map<String, dynamic> && data["type"] == "chat") {
+      if (data is Map && data["type"] == "chat") {
         messages.add(Map<String, dynamic>.from(data));
 
         if (hasListeners) {
