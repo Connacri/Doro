@@ -281,17 +281,17 @@ class P2PNode {
     if (type == null) return;
 
     switch (type) {
-      case "peer_offer":
+      case "offer":
         final peerId = msg["from"] as String;
         final sdp = msg["sdp"];
         _handleOffer(peerId, sdp);
         break;
-      case "peer_answer":
+      case "answer":
         final peerId = msg["from"] as String;
         final sdp = msg["sdp"];
         _handleAnswer(peerId, sdp);
         break;
-      case "peer_ice":
+      case "ice":
         final peerId = msg["from"] as String;
         final candidate = msg["candidate"];
         _handleIce(peerId, candidate);
