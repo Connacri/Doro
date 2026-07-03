@@ -44,7 +44,7 @@ class NodeIdentity {
       final seed = _hexToBytes(existingHex);
       keyPair = await Ed25519().newKeyPairFromSeed(seed);
     } else {
-      keyPair = await Ed25519().newKeyPair() as SimpleKeyPair;
+      keyPair = await Ed25519().newKeyPair();
       final seed = await keyPair.extractPrivateKeyBytes();
       await _storage.write(key: _seedKey, value: _bytesToHex(seed));
     }
