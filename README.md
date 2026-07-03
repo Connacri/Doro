@@ -192,7 +192,7 @@ appareil :
 ### Cas du wallet fondateur
 
 Le wallet fondateur (adresse `0x05ef5fa9991402ede9e8339d715469276c908b7d`) est le seul wallet
-qui possède un solde de départ non nul (l'allocation génésis de **21 millions DORO**). Il suit
+qui possède un solde de départ non nul (l'allocation génésis de **50 milliards DORO**). Il suit
 exactement le même processus de sauvegarde et de récupération que n'importe quel autre wallet :
 - Importez la seed hex correspondante via l'icône 🔑.
 - Le solde de départ est automatiquement crédité si l'adresse dérivée correspond à l'adresse
