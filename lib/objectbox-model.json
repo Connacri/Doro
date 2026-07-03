@@ -1,0 +1,126 @@
+{
+  "_note1": "KEEP THIS FILE! Check it into a version control system (VCS) like git.",
+  "_note2": "ObjectBox manages crucial IDs for your object model. See docs for details.",
+  "_note3": "If you have VCS merge conflicts, you must resolve them according to ObjectBox docs.",
+  "entities": [
+    {
+      "id": "1:1010061680843989750",
+      "lastPropertyId": "5:3475277421112028883",
+      "name": "PeerEntity",
+      "properties": [
+        {
+          "id": "1:7766543738734825291",
+          "name": "id",
+          "type": 6,
+          "flags": 1
+        },
+        {
+          "id": "2:4740816107799956041",
+          "name": "peerId",
+          "indexId": "1:7726032603119105699",
+          "type": 9,
+          "flags": 2048
+        },
+        {
+          "id": "3:4598540245019741039",
+          "name": "address",
+          "type": 9
+        },
+        {
+          "id": "4:1159459165212216066",
+          "name": "trusted",
+          "type": 1
+        },
+        {
+          "id": "5:3475277421112028883",
+          "name": "lastSeen",
+          "type": 6
+        }
+      ],
+      "relations": []
+    },
+    {
+      "id": "2:7311780424249181613",
+      "lastPropertyId": "6:2041337083914251737",
+      "name": "TxEntity",
+      "properties": [
+        {
+          "id": "1:6547542815416161554",
+          "name": "id",
+          "type": 6,
+          "flags": 1
+        },
+        {
+          "id": "2:2099635702311067724",
+          "name": "txId",
+          "indexId": "2:7666051317204458768",
+          "type": 9,
+          "flags": 2048
+        },
+        {
+          "id": "3:542374146466746261",
+          "name": "from",
+          "type": 9
+        },
+        {
+          "id": "4:6726465179525280025",
+          "name": "to",
+          "type": 9
+        },
+        {
+          "id": "5:8283707400001610370",
+          "name": "amount",
+          "type": 9
+        },
+        {
+          "id": "6:2041337083914251737",
+          "name": "timestamp",
+          "type": 6
+        }
+      ],
+      "relations": []
+    },
+    {
+      "id": "3:824099985797806823",
+      "lastPropertyId": "4:6503544043971122984",
+      "name": "WalletEntity",
+      "properties": [
+        {
+          "id": "1:2856720639112325242",
+          "name": "id",
+          "type": 6,
+          "flags": 1
+        },
+        {
+          "id": "2:3204598887602104535",
+          "name": "address",
+          "indexId": "3:7646839850102533557",
+          "type": 9,
+          "flags": 2048
+        },
+        {
+          "id": "3:7441841218607455296",
+          "name": "publicKey",
+          "type": 9
+        },
+        {
+          "id": "4:6503544043971122984",
+          "name": "balance",
+          "type": 9
+        }
+      ],
+      "relations": []
+    }
+  ],
+  "lastEntityId": "3:824099985797806823",
+  "lastIndexId": "3:7646839850102533557",
+  "lastRelationId": "0:0",
+  "lastSequenceId": "0:0",
+  "modelVersion": 5,
+  "modelVersionParserMinimum": 5,
+  "retiredEntityUids": [],
+  "retiredIndexUids": [],
+  "retiredPropertyUids": [],
+  "retiredRelationUids": [],
+  "version": 1
+}

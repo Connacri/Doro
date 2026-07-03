@@ -18,11 +18,13 @@ dependencies:
   crypto: ^3.0.0
   cryptography: ^2.7.0
   shared_preferences: ^2.2.0
+  qr_code_scanner_plus: ^2.2.0
   qr_flutter: ^4.1.0
-  mobile_scanner: ^5.2.3
   flutter_secure_storage: ^9.2.2
   objectbox: ^5.3.2
   objectbox_flutter_libs: any
+  path: ^1.9.0
+  path_provider: ^2.1.2
 
 
 

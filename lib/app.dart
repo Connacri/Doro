@@ -12,13 +12,16 @@ import 'features/ledger/ledger_screen.dart';
 import 'features/network/network_provider.dart';
 import 'features/network/network_screen.dart';
 
+import 'core/storage/objectbox/store.dart';
 import 'core/storage/repositories/wallet_repository.dart';
 import 'core/p2p/p2p_node.dart';
 import 'core/bootstrap/bootstrap_service.dart';
 import 'core/utils/logger.dart';
 import 'core/utils/node_identity.dart';
+
 class DoroApp extends StatefulWidget {
-  const DoroApp({super.key});
+  final ObjectBoxStore db;
+  const DoroApp({super.key, required this.db});
 
   @override
   State<DoroApp> createState() => _DoroAppState();
@@ -31,7 +34,7 @@ class _DoroAppState extends State<DoroApp> {
   @override
   void initState() {
     super.initState();
-    _walletRepo = WalletRepository();
+    _walletRepo = WalletRepository(widget.db);
     if (!Platform.environment.containsKey('FLUTTER_TEST')) {
       _initNode();
     }
@@ -39,7 +42,7 @@ class _DoroAppState extends State<DoroApp> {
 
   Future<void> _initNode() async {
     final nodeId = await NodeIdentity.getOrCreate();
-    final node = P2PNode(nodeId);
+    final node = P2PNode(nodeId, widget.db);
     _node = node;
     if (!mounted) return;
     setState(() {});

@@ -1,26 +1,36 @@
+import '../../../objectbox.g.dart';
+
 import '../entities/peer_entity.dart';
+import '../objectbox/store.dart';
 
 class PeerRepository {
-  final List<PeerEntity> _cache = [];
+  final ObjectBoxStore _db;
+  late final Box<PeerEntity> _box;
+
+  PeerRepository(this._db) {
+    _box = _db.getBox<PeerEntity>();
+  }
 
   void upsert(PeerEntity peer) {
-    _cache.removeWhere((p) => p.peerId == peer.peerId);
-    _cache.add(peer);
+    final existing = _box.query(PeerEntity_.peerId.equals(peer.peerId)).build().findFirst();
+    if (existing != null) {
+      peer.id = existing.id;
+    }
+    _box.put(peer);
   }
 
   List<PeerEntity> getAll() {
-    return List.unmodifiable(_cache);
+    return _box.getAll();
   }
 
   PeerEntity? findById(String peerId) {
-    try {
-      return _cache.firstWhere((p) => p.peerId == peerId);
-    } catch (_) {
-      return null;
-    }
+    return _box.query(PeerEntity_.peerId.equals(peerId)).build().findFirst();
   }
 
   void delete(String peerId) {
-    _cache.removeWhere((p) => p.peerId == peerId);
+    final peer = findById(peerId);
+    if (peer != null) {
+      _box.remove(peer.id);
+    }
   }
 }

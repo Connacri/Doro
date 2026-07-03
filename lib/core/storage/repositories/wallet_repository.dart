@@ -1,45 +1,53 @@
-import 'dart:convert';
-import 'package:shared_preferences/shared_preferences.dart';
+import '../../../objectbox.g.dart';
+
 import '../../wallet/wallet_core.dart';
 import '../../wallet/wallet_model.dart';
+import '../entities/wallet_entity.dart';
+import '../objectbox/store.dart';
 
 class WalletRepository {
-  final List<Wallet> _cache = [];
-  static const String _key = 'doro_wallets';
+  final ObjectBoxStore _db;
+  late final Box<WalletEntity> _box;
+
+  WalletRepository(this._db) {
+    _box = _db.getBox<WalletEntity>();
+  }
 
   Future<void> save(Wallet w) async {
-    _cache.add(w);
-    await _persist();
-  }
-
-  List<Wallet> all() => List.unmodifiable(_cache);
-
-  Future<void> syncFromCore(WalletCore core) async {
-    _cache.clear();
-    _cache.addAll(core.all());
-    await _persist();
-  }
-
-  Future<void> load() async {
-    final prefs = await SharedPreferences.getInstance();
-    final data = prefs.getStringList(_key);
-    if (data != null) {
-      _cache.clear();
-      for (final item in data) {
-        final json = jsonDecode(item);
-        _cache.add(Wallet(
-          address: json['address'],
-          publicKey: json['publicKey'],
-          balance: BigInt.parse(json['balance']),
-          nonce: json['nonce'] as int? ?? 0,
-        ));
-      }
+    final existing = _box.query(WalletEntity_.address.equals(w.address)).build().findFirst();
+    if (existing != null) {
+      _box.put(WalletEntity(
+        id: existing.id,
+        address: w.address,
+        publicKey: w.publicKey,
+        balance: w.balance.toString(),
+      ));
+    } else {
+      _box.put(WalletEntity(
+        address: w.address,
+        publicKey: w.publicKey,
+        balance: w.balance.toString(),
+      ));
     }
   }
 
-  Future<void> _persist() async {
-    final prefs = await SharedPreferences.getInstance();
-    final data = _cache.map((w) => jsonEncode(w.toJson())).toList();
-    await prefs.setStringList(_key, data);
+  List<Wallet> all() {
+    return _box.getAll().map((e) => Wallet(
+      address: e.address,
+      publicKey: e.publicKey,
+      balance: BigInt.parse(e.balance),
+      nonce: 0, // Should be part of entity if needed
+    )).toList();
+  }
+
+  Future<void> syncFromCore(WalletCore core) async {
+    _box.removeAll();
+    for (final w in core.all()) {
+      await save(w);
+    }
+  }
+
+  Future<void> load() async {
+    // No-op for ObjectBox
   }
 }

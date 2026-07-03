@@ -13,6 +13,7 @@ import '../consensus/consensus_engine.dart';
 import '../consensus/reputation_score.dart';
 import '../wallet/wallet_core.dart';
 import '../network/network_health.dart';
+import '../storage/objectbox/store.dart';
 import '../storage/repositories/tx_repository.dart';
 import '../utils/logger.dart';
 import '../utils/node_identity.dart';
@@ -74,7 +75,7 @@ class P2PNode {
 
   bool isSignalingConnected = false;
 
-  P2PNode(this.identity, {int requiredConfirmations = 1}) : nodeId = identity.nodeId {
+  P2PNode(this.identity, ObjectBoxStore db, {int requiredConfirmations = 1}) : nodeId = identity.nodeId {
     crypto = CryptoService();
     p2p = WebRTCNetworkEngine();
     gossip = GossipEngine();
@@ -84,7 +85,7 @@ class P2PNode {
     wallet = WalletCore();
     health = NetworkHealth();
     peerManager = PeerManager(engine: p2p);
-    txRepo = TxRepository();
+    txRepo = TxRepository(db);
 
     _wire();
   }

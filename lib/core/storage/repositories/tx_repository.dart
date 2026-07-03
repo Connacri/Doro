@@ -1,33 +1,45 @@
-import 'dart:convert';
-import 'package:shared_preferences/shared_preferences.dart';
+import '../../../objectbox.g.dart';
 import '../../dag/transaction_model.dart';
 
-class TxRepository {
-  final List<Transaction> _cache = [];
-  static const String _key = 'doro_finalized_txs';
+import '../entities/tx_entity.dart';
+import '../objectbox/store.dart';
 
-  List<Transaction> all() => List.unmodifiable(_cache);
+class TxRepository {
+  final ObjectBoxStore _db;
+  late final Box<TxEntity> _box;
+
+  TxRepository(this._db) {
+    _box = _db.getBox<TxEntity>();
+  }
+
+  List<Transaction> all() {
+    return _box.getAll().map((e) => Transaction(
+      id: e.txId,
+      from: e.from,
+      to: e.to,
+      amount: BigInt.parse(e.amount),
+      timestamp: e.timestamp,
+      signature: "", // Reconstruct or fetch from elsewhere if needed
+      nonce: 0,
+      senderPublicKey: "",
+      parents: [],
+    )).toList();
+  }
 
   Future<void> saveFinalized(Transaction tx) async {
-    if (_cache.any((t) => t.id == tx.id)) return;
-    _cache.add(tx);
-    await _persist();
+    final existing = _box.query(TxEntity_.txId.equals(tx.id)).build().findFirst();
+    if (existing != null) return;
+
+    _box.put(TxEntity(
+      txId: tx.id,
+      from: tx.from,
+      to: tx.to,
+      amount: tx.amount.toString(),
+      timestamp: tx.timestamp,
+    ));
   }
 
   Future<void> load() async {
-    final prefs = await SharedPreferences.getInstance();
-    final data = prefs.getStringList(_key);
-    if (data == null) return;
-
-    _cache.clear();
-    for (final item in data) {
-      _cache.add(Transaction.fromJson(jsonDecode(item) as Map<String, dynamic>));
-    }
-  }
-
-  Future<void> _persist() async {
-    final prefs = await SharedPreferences.getInstance();
-    final data = _cache.map((tx) => jsonEncode(tx.toJson())).toList();
-    await prefs.setStringList(_key, data);
+    // No-op for ObjectBox as it loads on demand or via getAll()
   }
 }

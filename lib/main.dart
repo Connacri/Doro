@@ -1,7 +1,12 @@
 import 'package:flutter/material.dart';
 import 'app.dart';
+import 'core/storage/objectbox/store.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  runApp(const DoroApp());
+
+  final db = ObjectBoxStore();
+  await db.init();
+
+  runApp(DoroApp(db: db));
 }
