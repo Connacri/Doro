@@ -4,7 +4,7 @@ import 'package:path_provider/path_provider.dart';
 import '../../../objectbox.g.dart'; // This will be generated
 
 class ObjectBoxStore {
-  late final Store _store;
+  Store? _store;
 
   Future<void> init({String? directory}) async {
     final String storeDir;
@@ -20,11 +20,11 @@ class ObjectBoxStore {
     _store = await openStore(directory: storeDir);
   }
 
-  Store get store => _store;
+  Store get store => _store!;
 
-  Box<T> getBox<T>() => _store.box<T>();
+  Box<T> getBox<T>() => _store!.box<T>();
 
   void close() {
-    _store.close();
+    _store?.close();
   }
 }

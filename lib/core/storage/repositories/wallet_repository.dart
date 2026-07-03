@@ -7,11 +7,11 @@ import '../objectbox/store.dart';
 
 class WalletRepository {
   final ObjectBoxStore _db;
-  late final Box<WalletEntity> _box;
+  Box<WalletEntity>? _boxCached;
 
-  WalletRepository(this._db) {
-    _box = _db.getBox<WalletEntity>();
-  }
+  WalletRepository(this._db);
+
+  Box<WalletEntity> get _box => _boxCached ??= _db.getBox<WalletEntity>();
 
   Future<void> save(Wallet w) async {
     final existing = _box.query(WalletEntity_.address.equals(w.address)).build().findFirst();

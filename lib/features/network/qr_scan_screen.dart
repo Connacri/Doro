@@ -91,6 +91,7 @@ class _QrScanScreenState extends State<QrScanScreen> {
       if (code == null || code.trim().isEmpty) return;
 
       _handled = true;
+      if (!mounted) return;
       Navigator.of(context).pop(code.trim());
     });
   }
