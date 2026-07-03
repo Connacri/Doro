@@ -131,11 +131,9 @@ class WalletProvider extends ChangeNotifier {
           node!.p2p.broadcast({"type": "tx", ...genesisTx.toJson()});
           node!.dag.confirm(genesisTx.id, node!.nodeId);
           core.creditIfLocal(address, Genesis.maxSupply);
-          node!.p2p.broadcast({
-            "type": "tx_approve",
-            "txId": genesisTx.id,
-            "approver": node!.nodeId,
-          });
+          // Vote signé par l'identité du node — jamais un "approver" en
+          // texte libre non prouvé (voir P2PNode.selfApprove).
+          await node!.selfApprove(genesisTx.id);
           Logger.info("Transaction genesis diffusée sur le réseau");
         } else {
           Logger.warn("Transaction genesis refusée par le DAG local : $result");

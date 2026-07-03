@@ -15,6 +15,8 @@ import '../wallet/wallet_core.dart';
 import '../network/network_health.dart';
 import '../storage/repositories/tx_repository.dart';
 import '../utils/logger.dart';
+import '../utils/node_identity.dart';
+import '../wallet/address_generator.dart';
 import 'peer_model.dart';
 import 'webrtc_engine.dart';
 import 'signaling_client.dart';
@@ -22,6 +24,14 @@ import 'peer_manager.dart';
 
 class P2PNode {
   final String nodeId;
+
+  /// Identité cryptographique du node (clé Ed25519 dont `nodeId` est
+  /// dérivé). Sert à SIGNER chaque vote de confirmation (`tx_approve`)
+  /// qu'on émet — voir `_broadcastApproval` / `selfApprove` — pour qu'un
+  /// pair receveur puisse vérifier que le vote vient bien du détenteur
+  /// réel de ce nodeId, et pas d'un texte libre inventé par un tiers.
+  final NodeIdentityKeyPair identity;
+
   late final CryptoService crypto;
   late final WebRTCNetworkEngine p2p;
   late final GossipEngine gossip;
@@ -41,17 +51,17 @@ class P2PNode {
   final Set<String> _seenApprovals = {};
 
   final StreamController<Map<String, dynamic>> _messageController =
-      StreamController<Map<String, dynamic>>.broadcast();
+  StreamController<Map<String, dynamic>>.broadcast();
 
   Stream<Map<String, dynamic>> get messages => _messageController.stream;
 
   final StreamController<void> _networkChangeController =
-      StreamController<void>.broadcast();
+  StreamController<void>.broadcast();
 
   Stream<void> get networkChanges => _networkChangeController.stream;
 
   final StreamController<void> _walletChangeController =
-      StreamController<void>.broadcast();
+  StreamController<void>.broadcast();
 
   /// Émet un événement chaque fois que MON wallet local est crédité —
   /// ce qui n'arrive désormais QU'après qu'une transaction a été validée
@@ -64,7 +74,7 @@ class P2PNode {
 
   bool isSignalingConnected = false;
 
-  P2PNode(this.nodeId, {int requiredConfirmations = 1}) {
+  P2PNode(this.identity, {int requiredConfirmations = 1}) : nodeId = identity.nodeId {
     crypto = CryptoService();
     p2p = WebRTCNetworkEngine();
     gossip = GossipEngine();
@@ -115,10 +125,13 @@ class P2PNode {
     };
   }
 
+  /// Envoyé sur le DATA CHANNEL P2P (pas le WebSocket de signaling : ce
+  /// dernier ne relaie que offer/answer/ice/peer_list, et n'a aucun `case`
+  /// pour "sync_request" — l'envoyer par ce canal le fait disparaître
+  /// silencieusement côté pair receveur, sans erreur ni log).
   void _sendSyncRequest(String peerId) {
-    _signaling?.send({
+    p2p.sendToPeer(peerId, {
       "type": "sync_request",
-      "to": peerId,
       "from": nodeId,
     });
   }
@@ -136,7 +149,7 @@ class P2PNode {
           await _handleIncomingTx(map);
           break;
         case "tx_approve":
-          _handleIncomingApprove(map);
+          await _handleIncomingApprove(map);
           break;
         case "sync_request":
           _handleSyncRequest(map);
@@ -180,10 +193,11 @@ class P2PNode {
     final result = dag.addValidated(tx);
     switch (result) {
       case DagAcceptResult.accepted:
-        // Je viens de valider cette tx moi-même : je le fais savoir aux
-        // autres pairs (c'est ÇA, "validée par d'autres" — chaque pair qui
-        // la reçoit et la valide vote pour elle).
-        p2p.broadcast({"type": "tx_approve", "txId": tx.id, "approver": nodeId});
+      // Je viens de valider cette tx moi-même : je le fais savoir aux
+      // autres pairs (c'est ÇA, "validée par d'autres" — chaque pair qui
+      // la reçoit et la valide vote pour elle). Le vote est SIGNÉ par
+      // mon identité — voir _broadcastApproval.
+        await _broadcastApproval(tx.id);
         // Je relaie aussi la tx d'origine, pour qu'elle atteigne des pairs
         // qui ne sont pas directement connectés à son émetteur.
         p2p.broadcast({"type": "tx", ...tx.toJson()});
@@ -197,7 +211,7 @@ class P2PNode {
       case DagAcceptResult.rejectedTampered:
         Logger.error(
           "Tx ${tx.id} REJETÉE : contenu falsifié — le hash ne correspond "
-          "pas à la version déjà connue de cette transaction.",
+              "pas à la version déjà connue de cette transaction.",
         );
         break;
       case DagAcceptResult.rejectedUnknownParents:
@@ -211,11 +225,87 @@ class P2PNode {
     }
   }
 
-  void _handleIncomingApprove(Map<String, dynamic> data) {
+  /// Diffuse MON propre vote de confirmation pour `txId`, signé par mon
+  /// identité de node. Utilisé aussi bien pour une tx que je viens de
+  /// valider en direct (`_handleIncomingTx`) que pour une tx que
+  /// j'insère et confirme moi-même côté émetteur (voir
+  /// `selfApprove`, utilisé pour la tx genesis dans `WalletProvider`).
+  Future<void> _broadcastApproval(String txId) async {
+    final payload = utf8.encode("$txId:$nodeId");
+    final signature = await crypto.sign(payload, keyPair: identity.keyPair);
+    p2p.broadcast({
+      "type": "tx_approve",
+      "txId": txId,
+      "approver": nodeId,
+      "approverPublicKey": identity.publicKeyHex,
+      "signature": _bytesToHex(signature.bytes),
+    });
+  }
+
+  /// Point d'entrée public : signe et diffuse mon vote pour une tx que
+  /// j'ai déjà acceptée et confirmée localement moi-même (`dag.confirm`).
+  /// Remplace l'ancien `p2p.broadcast({"type": "tx_approve", ...})`
+  /// appelé directement depuis `WalletProvider` pour la tx genesis, qui
+  /// envoyait un `approver` en texte libre, sans aucune signature.
+  Future<void> selfApprove(String txId) => _broadcastApproval(txId);
+
+  /// AVANT ce fix : `approver` était une chaîne libre du JSON reçu, sans
+  /// AUCUNE preuve de possession de ce nodeId. N'importe quel pair
+  /// connecté (un seul suffit) pouvait diffuser un `tx_approve` en
+  /// prétendant être un nodeId arbitraire — y compris un nodeId jamais
+  /// rencontré — et fabriquer autant de "votes distincts" qu'il voulait
+  /// pour atteindre artificiellement le seuil de finalité, sans avoir
+  /// besoin de plusieurs appareils ni d'aucune vraie connexion P2P
+  /// supplémentaire.
+  ///
+  /// APRÈS ce fix, un vote n'est compté QUE si les trois conditions
+  /// suivantes sont TOUTES vraies :
+  ///  1. le `nodeId` annoncé est bien le hash de la clé publique fournie
+  ///     (on ne peut pas coller un nodeId choisi à une vraie clé) ;
+  ///  2. la signature Ed25519 de "txId:approver" est valide pour cette
+  ///     clé publique (donc émise par le détenteur réel de la clé
+  ///     privée correspondante — personne d'autre ne peut la forger) ;
+  ///  3. ce nodeId n'est pas bloqué par la protection anti-Sybil locale.
+  ///
+  /// Limite assumée, à documenter clairement pour l'équipe : ceci
+  /// élimine l'usurpation gratuite d'un nodeId qu'on ne possède pas, mais
+  /// n'empêche pas un attaquant déterminé de générer plusieurs identités
+  /// RÉELLES et distinctes (une paire de clés Ed25519 se génère en
+  /// quelques millisecondes, sans coût). Sans mécanisme économique
+  /// (stake avec slashing, ou preuve de travail) pour rendre chaque
+  /// identité coûteuse à produire, un Sybil-resistance TOTALE n'existe
+  /// dans aucun système P2P connu — Bitcoin lui-même ne résout pas ce
+  /// problème par l'authentification, mais par le coût du calcul (PoW).
+  /// Ce fix ferme le trou de forgerie gratuite ; `staking_engine.dart`
+  /// (présent dans le repo mais non branché) est la pièce qui manque
+  /// pour aller plus loin.
+  Future<void> _handleIncomingApprove(Map<String, dynamic> data) async {
     final txId = data["txId"] as String?;
     final approver = data["approver"] as String?;
-    if (txId == null || approver == null) return;
+    final approverPublicKey = data["approverPublicKey"] as String?;
+    final sigHex = data["signature"] as String?;
+    if (txId == null || approver == null || approverPublicKey == null || sigHex == null) {
+      return;
+    }
     if (approver == nodeId) return;
+
+    if (AddressGenerator.generate(approverPublicKey) != approver) {
+      Logger.warn(
+        "tx_approve rejeté : le nodeId annoncé ($approver) ne correspond "
+            "pas à la clé publique fournie — usurpation d'identité probable.",
+      );
+      return;
+    }
+
+    if (!await _verifyApprovalSignature(txId, approver, approverPublicKey, sigHex)) {
+      Logger.warn("tx_approve rejeté : signature invalide pour $approver");
+      return;
+    }
+
+    if (peerManager.isBlocked(approver)) {
+      Logger.warn("tx_approve ignoré : $approver est bloqué par la protection anti-Sybil");
+      return;
+    }
 
     final key = "$txId:$approver";
     if (_seenApprovals.contains(key)) return;
@@ -225,11 +315,41 @@ class P2PNode {
 
     // Relai borné : chaque (tx, approbateur) n'est rediffusé qu'une fois
     // par node, ce qui propage l'info sans boucle infinie dans un mesh.
-    p2p.broadcast({"type": "tx_approve", "txId": txId, "approver": approver});
+    // On relaie la signature d'origine telle quelle — on ne re-signe
+    // jamais un vote qui n'est pas le nôtre.
+    p2p.broadcast({
+      "type": "tx_approve",
+      "txId": txId,
+      "approver": approver,
+      "approverPublicKey": approverPublicKey,
+      "signature": sigHex,
+    });
 
     if (justFinalized) {
       final tx = dag.ledger[txId];
       if (tx != null) _creditIfFinalizedHere(tx);
+    }
+  }
+
+  Future<bool> _verifyApprovalSignature(
+      String txId,
+      String approver,
+      String approverPublicKeyHex,
+      String sigHex,
+      ) async {
+    try {
+      final publicKey = SimplePublicKey(
+        _hexToBytes(approverPublicKeyHex),
+        type: KeyPairType.ed25519,
+      );
+      final signature = Signature(_hexToBytes(sigHex), publicKey: publicKey);
+      return await crypto.verify(
+        utf8.encode("$txId:$approver"),
+        signature: signature,
+      );
+    } catch (e) {
+      Logger.warn("Signature de vote illisible pour $approver : $e");
+      return false;
     }
   }
 
@@ -245,12 +365,46 @@ class P2PNode {
     });
   }
 
+  /// Rattrapage reçu d'UN pair : chaque tx repasse par les mêmes contrôles
+  /// qu'une tx reçue en direct (structure + signature Ed25519) — le fait
+  /// qu'un pair l'annonce comme "finale" ne dispense jamais de vérifier
+  /// l'authenticité, sinon un seul pair malveillant pourrait injecter un
+  /// faux historique dans un nouvel appareil qui n'a encore aucune
+  /// référence locale pour le contredire.
+  ///
+  /// `restoreFinalized()` appelle `finality.markFinalized()` directement
+  /// SANS déclencher `onFinalized` (qui ne sert qu'au chemin de
+  /// confirmation "live"). Sans le crédit explicite ci-dessous, un
+  /// appareil qui rattrape son historique via sync verrait son DAG
+  /// complet mais son solde de wallet resterait à zéro pour tout ce
+  /// qu'il a "reçu" avant sa reconnexion.
   Future<void> _handleSyncResponse(Map<String, dynamic> data) async {
     final txs = data["txs"] as List?;
     if (txs == null) return;
+
     for (final item in txs) {
-      final tx = Transaction.fromJson(Map<String, dynamic>.from(item));
-      dag.restoreFinalized(tx);
+      late final Transaction tx;
+      try {
+        tx = Transaction.fromJson(Map<String, dynamic>.from(item));
+      } catch (e) {
+        Logger.warn("Tx de sync malformée ignorée : $e");
+        continue;
+      }
+
+      if (!_txValidator.validate(tx)) {
+        Logger.warn("Tx de sync ${tx.id} rejetée : validation structurelle échouée");
+        continue;
+      }
+
+      if (!await _verifySignature(tx)) {
+        Logger.warn("Tx de sync ${tx.id} rejetée : signature invalide");
+        continue;
+      }
+
+      final result = dag.restoreFinalized(tx);
+      if (result == DagAcceptResult.accepted) {
+        _creditIfFinalizedHere(tx);
+      }
     }
   }
 
@@ -290,6 +444,9 @@ class P2PNode {
     }
     return bytes;
   }
+
+  String _bytesToHex(List<int> bytes) =>
+      bytes.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
 
   Future<void> start({String? signalingUrl}) async {
     await _loadPersistedLedger();
