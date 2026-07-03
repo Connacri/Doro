@@ -85,6 +85,7 @@ class _QrScanScreenState extends State<QrScanScreen> {
     setState(() {
       _controller = controller;
     });
+    controller.resumeCamera();
     controller.scannedDataStream.listen((scanData) {
       if (_handled) return;
       final code = scanData.code;
@@ -107,6 +108,8 @@ class _QrScanScreenState extends State<QrScanScreen> {
           ),
         ),
       );
+    } else {
+      ctrl.resumeCamera();
     }
   }
 }
