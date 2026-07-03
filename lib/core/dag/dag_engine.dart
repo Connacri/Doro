@@ -133,6 +133,14 @@ class DagEngine {
   int confirmationsOf(String txId) => finality.confirmationsOf(txId);
   int confirmersCountOf(String txId) => _confirmedBy[txId]?.length ?? 0;
 
+  DagAcceptResult restoreFinalized(Transaction tx) {
+    final result = addValidated(tx);
+    if (result == DagAcceptResult.accepted) {
+      finality.markFinalized(tx.id);
+    }
+    return result;
+  }
+
   /// Revérifie que chaque tx stockée a bien tous ses parents connus
   /// localement — détecte une incohérence/corruption du ledger local.
   bool verifyIntegrity() {

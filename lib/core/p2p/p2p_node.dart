@@ -13,6 +13,7 @@ import '../consensus/consensus_engine.dart';
 import '../consensus/reputation_score.dart';
 import '../wallet/wallet_core.dart';
 import '../network/network_health.dart';
+import '../storage/repositories/tx_repository.dart';
 import '../utils/logger.dart';
 import 'peer_model.dart';
 import 'webrtc_engine.dart';
@@ -30,6 +31,7 @@ class P2PNode {
   late final WalletCore wallet;
   late final NetworkHealth health;
   late final PeerManager peerManager;
+  late final TxRepository txRepo;
 
   final TxValidator _txValidator = TxValidator();
 
@@ -72,6 +74,7 @@ class P2PNode {
     wallet = WalletCore();
     health = NetworkHealth();
     peerManager = PeerManager(engine: p2p);
+    txRepo = TxRepository();
 
     _wire();
   }
@@ -83,6 +86,10 @@ class P2PNode {
 
     dag.onCommit = (tx) {
       sync.push(tx);
+    };
+
+    dag.onFinalized = (tx) {
+      txRepo.saveFinalized(tx);
     };
 
     p2p.onPeerConnected = (peerId) {
@@ -102,6 +109,18 @@ class P2PNode {
         "candidate": candidate,
       });
     };
+
+    p2p.onChannelOpen = (peerId) {
+      _sendSyncRequest(peerId);
+    };
+  }
+
+  void _sendSyncRequest(String peerId) {
+    _signaling?.send({
+      "type": "sync_request",
+      "to": peerId,
+      "from": nodeId,
+    });
   }
 
   Future<void> _handleIncoming(String from, String msg) async {
@@ -118,6 +137,12 @@ class P2PNode {
           break;
         case "tx_approve":
           _handleIncomingApprove(map);
+          break;
+        case "sync_request":
+          _handleSyncRequest(map);
+          break;
+        case "sync_response":
+          await _handleSyncResponse(map);
           break;
       }
     } catch (e) {
@@ -208,6 +233,27 @@ class P2PNode {
     }
   }
 
+  void _handleSyncRequest(Map<String, dynamic> data) {
+    final from = data["from"] as String?;
+    if (from == null) return;
+    final txs = dag.all().map((tx) => tx.toJson()).toList();
+    p2p.sendToPeer(from, {
+      "type": "sync_response",
+      "to": from,
+      "from": nodeId,
+      "txs": txs,
+    });
+  }
+
+  Future<void> _handleSyncResponse(Map<String, dynamic> data) async {
+    final txs = data["txs"] as List?;
+    if (txs == null) return;
+    for (final item in txs) {
+      final tx = Transaction.fromJson(Map<String, dynamic>.from(item));
+      dag.restoreFinalized(tx);
+    }
+  }
+
   void _creditIfFinalizedHere(Transaction tx) {
     final credited = wallet.creditIfLocal(tx.to, tx.amount);
     if (credited && !_walletChangeController.isClosed) {
@@ -246,6 +292,7 @@ class P2PNode {
   }
 
   Future<void> start({String? signalingUrl}) async {
+    await _loadPersistedLedger();
     Logger.info("Starting P2P node: $nodeId");
 
     if (signalingUrl != null) {
@@ -308,6 +355,7 @@ class P2PNode {
   }
 
   Future<void> _handleOffer(String peerId, dynamic sdp) async {
+    if (peerManager.isBlocked(peerId)) return;
     final answer = await p2p.acceptConnection(peerId, sdp);
     if (answer != null && _signaling != null) {
       _signaling!.send({
@@ -331,6 +379,7 @@ class P2PNode {
   }
 
   Future<void> connectToPeer(String peerId) async {
+    if (peerManager.isBlocked(peerId)) return;
     final offer = await p2p.createOffer(peerId);
     if (offer != null && _signaling != null) {
       _signaling!.send({
@@ -377,6 +426,13 @@ class P2PNode {
       "text": text,
       "time": DateTime.now().toIso8601String(),
     });
+  }
+
+  Future<void> _loadPersistedLedger() async {
+    await txRepo.load();
+    for (final tx in txRepo.all()) {
+      dag.restoreFinalized(tx);
+    }
   }
 
   Future<void> stop() async {

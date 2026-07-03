@@ -28,6 +28,8 @@ class PeerManager {
     sybil.decreaseTrust(peerId);
   }
 
+  bool isBlocked(String peerId) => sybil.isBlocked(peerId);
+
   void broadcastTx(Map<String, dynamic> tx) {
     engine.broadcast(tx);
   }

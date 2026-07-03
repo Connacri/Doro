@@ -4,8 +4,31 @@ import 'package:flutter_webrtc/flutter_webrtc.dart';
 class PeerConnection {
   RTCPeerConnection? _pc;
   RTCDataChannel? _channel;
+  bool _isOpen = false;
 
   Function(String msg)? onMessage;
+  void Function()? _onChannelOpen;
+
+  bool get isOpen => _isOpen;
+
+  void onChannelOpen(void Function() cb) {
+    _onChannelOpen = cb;
+  }
+
+  void _wireChannel(RTCDataChannel channel) {
+    _channel = channel;
+    _channel!.onMessage = (msg) {
+      onMessage?.call(msg.text);
+    };
+    _channel!.onDataChannelState = (state) {
+      if (state == RTCDataChannelState.RTCDataChannelOpen) {
+        _isOpen = true;
+        _onChannelOpen?.call();
+      } else if (state == RTCDataChannelState.RTCDataChannelClosed) {
+        _isOpen = false;
+      }
+    };
+  }
 
   Future<void> init() async {
     final config = {
@@ -18,10 +41,7 @@ class PeerConnection {
     _pc = await createPeerConnection(config);
 
     _pc!.onDataChannel = (channel) {
-      _channel = channel;
-      _channel!.onMessage = (msg) {
-        onMessage?.call(msg.text);
-      };
+      _wireChannel(channel);
     };
 
     _pc!.onIceCandidate = (candidate) {
@@ -81,16 +101,13 @@ class PeerConnection {
       RTCDataChannelInit()..ordered = true,
     );
 
-    _channel = channel;
-
-    _channel!.onMessage = (msg) {
-      onMessage?.call(msg.text);
-    };
+    _wireChannel(channel);
 
     return channel;
   }
 
   void send(String message) {
+    if (!_isOpen) return;
     _channel?.send(RTCDataChannelMessage(message));
   }
 

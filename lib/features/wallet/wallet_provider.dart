@@ -130,6 +130,7 @@ class WalletProvider extends ChangeNotifier {
         if (result == DagAcceptResult.accepted) {
           node!.p2p.broadcast({"type": "tx", ...genesisTx.toJson()});
           node!.dag.confirm(genesisTx.id, node!.nodeId);
+          core.creditIfLocal(address, Genesis.maxSupply);
           node!.p2p.broadcast({
             "type": "tx_approve",
             "txId": genesisTx.id,

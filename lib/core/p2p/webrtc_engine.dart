@@ -11,6 +11,7 @@ class WebRTCNetworkEngine {
   void Function(String peerId)? onPeerConnected;
   void Function(String peerId)? onPeerDisconnected;
   void Function(String peerId, Map<String, dynamic> candidate)? onIceCandidate;
+  void Function(String peerId)? onChannelOpen;
 
   void registerPeer(Peer peer) {
     final isNew = !peers.containsKey(peer.id);
@@ -19,18 +20,8 @@ class WebRTCNetworkEngine {
   }
 
   Future<void> connectPeer(Peer peer) async {
-    final conn = PeerConnection();
-    await conn.init();
-
-    conn.onMessage = (msg) {
-      onMessage?.call(peer.id, msg);
-    };
-    conn.onDisconnect(() => removePeer(peer.id));
-    conn.onIceCandidate((candidate) => onIceCandidate?.call(peer.id, candidate));
-
-    await conn.createChannel();
-    _connections[peer.id] = conn;
     registerPeer(peer);
+    await createOffer(peer.id);
   }
 
   Future<Map<String, dynamic>?> createOffer(String peerId) async {
@@ -42,7 +33,9 @@ class WebRTCNetworkEngine {
     };
     conn.onDisconnect(() => removePeer(peerId));
     conn.onIceCandidate((candidate) => onIceCandidate?.call(peerId, candidate));
+    conn.onChannelOpen(() => onChannelOpen?.call(peerId));
 
+    await conn.createChannel();
     final offer = await conn.createOffer();
     _connections[peerId] = conn;
     _pendingOffers[peerId] = conn;
@@ -64,6 +57,7 @@ class WebRTCNetworkEngine {
     };
     conn.onDisconnect(() => removePeer(peerId));
     conn.onIceCandidate((candidate) => onIceCandidate?.call(peerId, candidate));
+    conn.onChannelOpen(() => onChannelOpen?.call(peerId));
 
     await conn.setRemoteDescription(sdp);
     final answer = await conn.createAnswer();

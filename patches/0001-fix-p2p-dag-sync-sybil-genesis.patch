@@ -1,0 +1,585 @@
+From d8c1b5a5eedd917565835bb978dec75403acd234 Mon Sep 17 00:00:00 2001
+From: Claude <claude@anthropic.com>
+Date: Fri, 3 Jul 2026 11:20:50 +0000
+Subject: [PATCH] =?UTF-8?q?fix(p2p):=20cr=C3=A9ation=20du=20canal=20de=20d?=
+ =?UTF-8?q?onn=C3=A9es=20manquante=20c=C3=B4t=C3=A9=20offreur?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+- webrtc_engine.dart: createOffer() créait une offre SDP sans jamais
+  appeler createChannel() -> pas de m-line SCTP négociée, aucun
+  transport applicatif possible même une fois la connexion WebRTC
+  établie. connectPeer() (dead code) délègue maintenant à createOffer()
+  pour ne plus dupliquer la logique.
+- peer_connection.dart: détection réelle d'ouverture du canal
+  (onDataChannelState) côté offreur et répondeur, via _wireChannel()
+  commun. send() ignore silencieusement si le canal n'est pas encore
+  Open.
+
+feat(dag): persistance des transactions finalisées
+
+- finality_engine.dart: FinalityEngine.markFinalized() pour restaurer
+  l'état final sans rejouer de fausses confirmations réseau.
+- dag_engine.dart: DagEngine.restoreFinalized() réinjecte une tx connue
+  comme finale (rechargement disque ou rattrapage réseau) en gardant
+  les mêmes garanties structurelles que addValidated.
+- tx_repository.dart: persistance réelle via shared_preferences (même
+  pattern que WalletRepository) -- objectbox n'est pas une dépendance
+  du projet (absente de pubspec.yaml), donc pas utilisée ici.
+- p2p_node.dart: dag.onFinalized persiste chaque tx finalisée; start()
+  recharge le ledger persisté avant toute connexion réseau.
+
+feat(p2p): protocole de rattrapage sync_request/sync_response
+
+- Déclenché sur onChannelOpen (pas avant, le canal ne serait pas
+  encore utilisable).
+- Chaque tx de rattrapage repasse par la validation structurelle et la
+  vérification de signature avant restoreFinalized -- la finalité
+  annoncée par le pair ne dispense pas de vérifier l'authenticité.
+- Limite connue: v1 mono-pair, mono-round (pas de comparaison
+  multi-pairs ni de retry si des parents manquent dans le batch).
+
+fix(security): protection anti-Sybil contournable
+
+- peer_manager.dart: PeerManager.isBlocked() exposé pour vérifier
+  AVANT d'établir une connexion, pas seulement au moment du
+  registerPeer bookkeeping (qui intervenait déjà après l'envoi de
+  l'offre/réponse SDP).
+- p2p_node.dart: connectToPeer() et _handleOffer() refusent désormais
+  la connexion si le pair est bloqué, avant tout échange SDP.
+
+fix(wallet): allocation genesis jamais créditée en pratique
+
+- wallet_provider.dart: dans la branche accepted de importWallet(),
+  node.dag.confirm() finalisait bien la tx dans le DAG mais rien
+  n'appelait wallet.creditIfLocal() -- contrairement aux autres
+  chemins de finalisation dans P2PNode. Le wallet fondateur restait à
+  zéro tant que cette branche était prise.
+---
+ lib/core/dag/dag_engine.dart                  |  25 ++++
+ lib/core/dag/finality_engine.dart             |   9 ++
+ lib/core/p2p/p2p_node.dart                    | 140 ++++++++++++++++++
+ lib/core/p2p/peer_connection.dart             |  45 ++++--
+ lib/core/p2p/peer_manager.dart                |   7 +
+ lib/core/p2p/webrtc_engine.dart               |  29 ++--
+ .../storage/repositories/tx_repository.dart   |  46 +++++-
+ lib/features/wallet/wallet_provider.dart      |  10 ++
+ 8 files changed, 286 insertions(+), 25 deletions(-)
+
+diff --git a/lib/core/dag/dag_engine.dart b/lib/core/dag/dag_engine.dart
+index 0f2ead3..27b4be4 100644
+--- a/lib/core/dag/dag_engine.dart
++++ b/lib/core/dag/dag_engine.dart
+@@ -133,6 +133,31 @@ class DagEngine {
+   int confirmationsOf(String txId) => finality.confirmationsOf(txId);
+   int confirmersCountOf(String txId) => _confirmedBy[txId]?.length ?? 0;
+ 
++  /// Réinjecte une transaction lue depuis le stockage local, déjà connue
++  /// comme finalisée au moment où elle a été persistée. Passe par
++  /// `addValidated` pour garder les mêmes garanties structurelles
++  /// (immuabilité, chaînage, anti-rejeu) qu'une tx reçue du réseau, puis
++  /// force directement la finalité — sans rejouer de vraies confirmations
++  /// de pairs (impossible : ces pairs ne sont pas forcément reconnectés).
++  ///
++  /// IMPORTANT — ordre d'appel : les tx doivent être restaurées dans
++  /// l'ordre où elles ont été committées à l'origine (parents avant
++  /// enfants), sinon `addValidated` les rejette en
++  /// `rejectedUnknownParents`. `TxRepository` préserve cet ordre
++  /// d'insertion.
++  ///
++  /// Caveat à connaître : après restauration, `isFinal(txId)` vaut bien
++  /// `true`, mais `confirmersCountOf(txId)` reste à 0 (aucun vrai pair
++  /// n'a revoté). Si l'UI affiche un nombre de confirmateurs, distingue
++  /// bien les deux — ne pas les traiter comme équivalents.
++  DagAcceptResult restoreFinalized(Transaction tx) {
++    final result = addValidated(tx);
++    if (result == DagAcceptResult.accepted) {
++      finality.markFinalized(tx.id);
++    }
++    return result;
++  }
++
+   /// Revérifie que chaque tx stockée a bien tous ses parents connus
+   /// localement — détecte une incohérence/corruption du ledger local.
+   bool verifyIntegrity() {
+diff --git a/lib/core/dag/finality_engine.dart b/lib/core/dag/finality_engine.dart
+index 4cf90d8..61f7daa 100644
+--- a/lib/core/dag/finality_engine.dart
++++ b/lib/core/dag/finality_engine.dart
+@@ -18,6 +18,15 @@ class FinalityEngine {
+     confirmations[txId] = (confirmations[txId] ?? 0) + 1;
+   }
+ 
++  /// Force l'état "final" lors d'un rechargement depuis le stockage local.
++  /// Ne rejoue PAS de fausses confirmations de pairs (on ne veut pas
++  /// gonfler `confirmationsOf`/`confirmersCountOf` avec des votes qui
++  /// n'ont jamais réellement eu lieu) — seule la finalité elle-même,
++  /// déjà actée avant la persistance, est restaurée.
++  void markFinalized(String txId) {
++    confirmations[txId] = requiredConfirmations;
++  }
++
+   int confirmationsOf(String txId) => confirmations[txId] ?? 0;
+ 
+   bool isFinal(String txId) {
+diff --git a/lib/core/p2p/p2p_node.dart b/lib/core/p2p/p2p_node.dart
+index 7508d8e..f4f1190 100644
+--- a/lib/core/p2p/p2p_node.dart
++++ b/lib/core/p2p/p2p_node.dart
+@@ -14,6 +14,7 @@ import '../consensus/reputation_score.dart';
+ import '../wallet/wallet_core.dart';
+ import '../network/network_health.dart';
+ import '../utils/logger.dart';
++import '../storage/repositories/tx_repository.dart';
+ import 'peer_model.dart';
+ import 'webrtc_engine.dart';
+ import 'signaling_client.dart';
+@@ -30,6 +31,7 @@ class P2PNode {
+   late final WalletCore wallet;
+   late final NetworkHealth health;
+   late final PeerManager peerManager;
++  late final TxRepository txRepo;
+ 
+   final TxValidator _txValidator = TxValidator();
+ 
+@@ -72,6 +74,7 @@ class P2PNode {
+     wallet = WalletCore();
+     health = NetworkHealth();
+     peerManager = PeerManager(engine: p2p);
++    txRepo = TxRepository();
+ 
+     _wire();
+   }
+@@ -85,6 +88,13 @@ class P2PNode {
+       sync.push(tx);
+     };
+ 
++    // Persistance : dès qu'une tx franchit le seuil de confirmations par
++    // d'autres pairs, elle est actée sur disque. C'est ce qui manquait
++    // pour que le DAG survive au redémarrage de l'app.
++    dag.onFinalized = (tx) {
++      txRepo.saveFinalized(tx);
++    };
++
+     p2p.onPeerConnected = (peerId) {
+       health.ping(peerId);
+       if (!_networkChangeController.isClosed) _networkChangeController.add(null);
+@@ -102,6 +112,24 @@ class P2PNode {
+         "candidate": candidate,
+       });
+     };
++
++    // Le rattrapage ne peut démarrer qu'une fois le canal RÉELLEMENT
++    // ouvert (pas juste la connexion WebRTC établie) — avant ça, tout
++    // envoi serait silencieusement perdu (voir PeerConnection.send()).
++    p2p.onChannelOpen = (peerId) {
++      _sendSyncRequest(peerId);
++    };
++  }
++
++  /// Annonce à un pair qui vient de se connecter (ou de se reconnecter)
++  /// les tx que je connais déjà, pour qu'il ne me renvoie que ce qui me
++  /// manque réellement.
++  void _sendSyncRequest(String peerId) {
++    p2p.sendToPeer(peerId, {
++      "type": "sync_request",
++      "from": nodeId,
++      "knownIds": dag.ledger.keys.toList(),
++    });
+   }
+ 
+   Future<void> _handleIncoming(String from, String msg) async {
+@@ -119,6 +147,12 @@ class P2PNode {
+         case "tx_approve":
+           _handleIncomingApprove(map);
+           break;
++        case "sync_request":
++          _handleSyncRequest(from, map);
++          break;
++        case "sync_response":
++          await _handleSyncResponse(map);
++          break;
+       }
+     } catch (e) {
+       Logger.error("Failed to process message from $from: $e");
+@@ -215,6 +249,79 @@ class P2PNode {
+     }
+   }
+ 
++  /// Répond à un pair qui vient de se connecter avec toutes les tx
++  /// FINALISÉES que je connais et qu'il n'a pas (`knownIds`), dans
++  /// l'ordre de mon ledger — qui est garanti "parents avant enfants"
++  /// puisque `addValidated` refuse toute tx dont un parent est inconnu.
++  ///
++  /// Limite connue (v1) : je ne réponds qu'avec MA propre vue du réseau.
++  /// Si je suis moi-même en retard sur un pair tiers, ce pair-ci ne peut
++  /// pas me le faire savoir avec ce protocole simple — un vrai
++  /// rattrapage multi-pairs (comparer plusieurs sources, redemander en
++  /// plusieurs passes) serait nécessaire pour combler cet angle mort.
++  void _handleSyncRequest(String from, Map<String, dynamic> data) {
++    final knownIds = Set<String>.from(data["knownIds"] as List? ?? const []);
++    final missing = dag.ledger.values
++        .where((tx) => dag.isFinal(tx.id) && !knownIds.contains(tx.id))
++        .map((tx) => tx.toJson())
++        .toList();
++
++    if (missing.isEmpty) return;
++
++    p2p.sendToPeer(from, {
++      "type": "sync_response",
++      "from": nodeId,
++      "txs": missing,
++    });
++  }
++
++  /// Traite le rattrapage reçu d'un pair suite à mon `sync_request`.
++  /// Le pair annonce ces tx comme déjà finales, mais ça ne dispense pas
++  /// de revérifier leur authenticité : même validation structurelle et
++  /// signature qu'une tx reçue en direct (`_handleIncomingTx`). Seul le
++  /// cycle de vote entre pairs est court-circuité — via
++  /// `DagEngine.restoreFinalized`, pas `addValidated` + `confirm`.
++  Future<void> _handleSyncResponse(Map<String, dynamic> data) async {
++    final rawTxs = data["txs"];
++    if (rawTxs is! List) return;
++
++    for (final rawTx in rawTxs) {
++      if (rawTx is! Map) continue;
++
++      late final Transaction tx;
++      try {
++        tx = Transaction.fromJson(Map<String, dynamic>.from(rawTx));
++      } catch (e) {
++        Logger.warn("Tx de rattrapage malformée ignorée : $e");
++        continue;
++      }
++
++      if (!_txValidator.validate(tx)) {
++        Logger.warn(
++          "Tx de rattrapage ${tx.id} rejetée : validation structurelle échouée",
++        );
++        continue;
++      }
++      if (!await _verifySignature(tx)) {
++        Logger.warn("Tx de rattrapage ${tx.id} rejetée : signature invalide");
++        continue;
++      }
++
++      final result = dag.restoreFinalized(tx);
++      if (result == DagAcceptResult.accepted) {
++        // Peut me concerner directement (to == mon adresse) : je crédite
++        // mon wallet local exactement comme pour une finalisation reçue
++        // en direct.
++        _creditIfFinalizedHere(tx);
++      } else if (result == DagAcceptResult.rejectedUnknownParents) {
++        // Un round unique ne suffit pas toujours (parents pas encore
++        // reçus dans ce batch) — limite connue du v1, voir
++        // _handleSyncRequest.
++        Logger.info("Tx de rattrapage ${tx.id} en attente : parents inconnus");
++      }
++    }
++  }
++
+   /// Vérifie que `tx.signature` est bien une signature Ed25519 valide de
+   /// `tx.hash` par la clé publique `tx.senderPublicKey`. C'est ce qui
+   /// garantit qu'une transaction n'a pu être créée que par le détenteur
+@@ -248,6 +355,11 @@ class P2PNode {
+   Future<void> start({String? signalingUrl}) async {
+     Logger.info("Starting P2P node: $nodeId");
+ 
++    // Recharge le DAG persisté AVANT toute connexion réseau, pour que le
++    // solde et l'historique local soient prêts avant que le premier
++    // message P2P n'arrive.
++    await _loadPersistedLedger();
++
+     if (signalingUrl != null) {
+       _signaling = SignalingClient(signalingUrl);
+       _signaling!.onConnect = () {
+@@ -276,6 +388,26 @@ class P2PNode {
+     });
+   }
+ 
++  /// Recharge les tx finalisées persistées et les réinjecte dans le DAG
++  /// local, dans l'ordre où elles ont été sauvegardées à l'origine
++  /// (= ordre où leurs parents étaient déjà connus). Chaque tx repasse
++  /// par les mêmes contrôles structurels qu'une tx reçue du réseau
++  /// (`DagEngine.restoreFinalized` → `addValidated`), mais sans rejouer
++  /// de fausses confirmations de pairs.
++  Future<void> _loadPersistedLedger() async {
++    await txRepo.load();
++    for (final tx in txRepo.all()) {
++      final result = dag.restoreFinalized(tx);
++      if (result != DagAcceptResult.accepted &&
++          result != DagAcceptResult.alreadyKnown) {
++        Logger.info(
++          "Tx persistée ${tx.id} rejetée au rechargement ($result) — "
++          "ledger local potentiellement corrompu ou ordre de sauvegarde rompu.",
++        );
++      }
++    }
++  }
++
+   void _handleSignal(Map<String, dynamic> msg) {
+     final type = msg["type"] as String?;
+     if (type == null) return;
+@@ -308,6 +440,10 @@ class P2PNode {
+   }
+ 
+   Future<void> _handleOffer(String peerId, dynamic sdp) async {
++    if (peerManager.isBlocked(peerId)) {
++      Logger.warn("Offre de $peerId ignorée : pair bloqué (score de confiance)");
++      return;
++    }
+     final answer = await p2p.acceptConnection(peerId, sdp);
+     if (answer != null && _signaling != null) {
+       _signaling!.send({
+@@ -331,6 +467,10 @@ class P2PNode {
+   }
+ 
+   Future<void> connectToPeer(String peerId) async {
++    if (peerManager.isBlocked(peerId)) {
++      Logger.warn("Connexion à $peerId refusée : pair bloqué (score de confiance)");
++      return;
++    }
+     final offer = await p2p.createOffer(peerId);
+     if (offer != null && _signaling != null) {
+       _signaling!.send({
+diff --git a/lib/core/p2p/peer_connection.dart b/lib/core/p2p/peer_connection.dart
+index ffe8da4..b68a393 100644
+--- a/lib/core/p2p/peer_connection.dart
++++ b/lib/core/p2p/peer_connection.dart
+@@ -7,6 +7,39 @@ class PeerConnection {
+ 
+   Function(String msg)? onMessage;
+ 
++  bool _isOpen = false;
++  bool get isOpen => _isOpen;
++
++  void Function()? _onChannelOpen;
++
++  /// Signalé quand le canal de données est réellement OUVERT (pas
++  /// seulement créé) — c'est le seul moment où `send()` a une chance
++  /// d'aboutir. `RTCDataChannelState.RTCDataChannelConnecting` ne suffit
++  /// pas : les messages envoyés avant l'état `Open` sont silencieusement
++  /// perdus côté flutter_webrtc.
++  void onChannelOpen(void Function() cb) {
++    _onChannelOpen = cb;
++  }
++
++  /// Câblage commun à un canal, qu'il soit créé localement
++  /// (offreur, `createChannel()`) ou reçu du pair distant
++  /// (répondeur, `onDataChannel` dans `init()`).
++  void _wireChannel(RTCDataChannel channel) {
++    _channel = channel;
++    _isOpen = channel.state == RTCDataChannelState.RTCDataChannelOpen;
++
++    channel.onMessage = (msg) {
++      onMessage?.call(msg.text);
++    };
++
++    channel.onDataChannelState = (state) {
++      _isOpen = state == RTCDataChannelState.RTCDataChannelOpen;
++      if (_isOpen) {
++        _onChannelOpen?.call();
++      }
++    };
++  }
++
+   Future<void> init() async {
+     final config = {
+       "iceServers": [
+@@ -18,10 +51,7 @@ class PeerConnection {
+     _pc = await createPeerConnection(config);
+ 
+     _pc!.onDataChannel = (channel) {
+-      _channel = channel;
+-      _channel!.onMessage = (msg) {
+-        onMessage?.call(msg.text);
+-      };
++      _wireChannel(channel);
+     };
+ 
+     _pc!.onIceCandidate = (candidate) {
+@@ -81,16 +111,13 @@ class PeerConnection {
+       RTCDataChannelInit()..ordered = true,
+     );
+ 
+-    _channel = channel;
+-
+-    _channel!.onMessage = (msg) {
+-      onMessage?.call(msg.text);
+-    };
++    _wireChannel(channel);
+ 
+     return channel;
+   }
+ 
+   void send(String message) {
++    if (!_isOpen) return;
+     _channel?.send(RTCDataChannelMessage(message));
+   }
+ 
+diff --git a/lib/core/p2p/peer_manager.dart b/lib/core/p2p/peer_manager.dart
+index 5956be3..aac3893 100644
+--- a/lib/core/p2p/peer_manager.dart
++++ b/lib/core/p2p/peer_manager.dart
+@@ -28,6 +28,13 @@ class PeerManager {
+     sybil.decreaseTrust(peerId);
+   }
+ 
++  /// À vérifier AVANT d'initier ou d'accepter une connexion — pas
++  /// seulement au moment de l'enregistrement bookkeeping. `registerPeer`
++  /// vérifie déjà `sybil.isBlocked`, mais seulement APRÈS que l'offre/la
++  /// réponse WebRTC a été envoyée : un pair bloqué pouvait donc quand
++  /// même établir un canal de données fonctionnel.
++  bool isBlocked(String peerId) => sybil.isBlocked(peerId);
++
+   void broadcastTx(Map<String, dynamic> tx) {
+     engine.broadcast(tx);
+   }
+diff --git a/lib/core/p2p/webrtc_engine.dart b/lib/core/p2p/webrtc_engine.dart
+index da22111..30fa5ce 100644
+--- a/lib/core/p2p/webrtc_engine.dart
++++ b/lib/core/p2p/webrtc_engine.dart
+@@ -12,25 +12,25 @@ class WebRTCNetworkEngine {
+   void Function(String peerId)? onPeerDisconnected;
+   void Function(String peerId, Map<String, dynamic> candidate)? onIceCandidate;
+ 
++  /// Contrairement à `onPeerConnected` (qui se déclenche dès l'échange de
++  /// SDP), ceci signale que le canal de données est réellement UTILISABLE
++  /// — c'est ce qu'il faut attendre avant d'envoyer un `sync_request` ou
++  /// toute donnée applicative à ce pair.
++  void Function(String peerId)? onChannelOpen;
++
+   void registerPeer(Peer peer) {
+     final isNew = !peers.containsKey(peer.id);
+     peers[peer.id] = peer;
+     if (isNew) onPeerConnected?.call(peer.id);
+   }
+ 
++  /// Conservée pour compatibilité API (PeerManager) : délègue à
++  /// createOffer() pour ne jamais avoir deux implémentations qui peuvent
++  /// diverger à nouveau (c'est cette duplication qui avait laissé le
++  /// canal de données non créé dans le chemin réellement utilisé).
+   Future<void> connectPeer(Peer peer) async {
+-    final conn = PeerConnection();
+-    await conn.init();
+-
+-    conn.onMessage = (msg) {
+-      onMessage?.call(peer.id, msg);
+-    };
+-    conn.onDisconnect(() => removePeer(peer.id));
+-    conn.onIceCandidate((candidate) => onIceCandidate?.call(peer.id, candidate));
+-
+-    await conn.createChannel();
+-    _connections[peer.id] = conn;
+     registerPeer(peer);
++    await createOffer(peer.id);
+   }
+ 
+   Future<Map<String, dynamic>?> createOffer(String peerId) async {
+@@ -42,7 +42,13 @@ class WebRTCNetworkEngine {
+     };
+     conn.onDisconnect(() => removePeer(peerId));
+     conn.onIceCandidate((candidate) => onIceCandidate?.call(peerId, candidate));
++    conn.onChannelOpen(() => onChannelOpen?.call(peerId));
+ 
++    // BUG CORRIGÉ : sans ceci, l'offre SDP ne négocie aucun canal de
++    // données (pas de m-line SCTP) — la connexion WebRTC peut s'établir
++    // mais rien ne peut jamais transiter dessus. Le canal doit être créé
++    // AVANT createOffer() pour que l'offre le négocie.
++    await conn.createChannel();
+     final offer = await conn.createOffer();
+     _connections[peerId] = conn;
+     _pendingOffers[peerId] = conn;
+@@ -64,6 +70,7 @@ class WebRTCNetworkEngine {
+     };
+     conn.onDisconnect(() => removePeer(peerId));
+     conn.onIceCandidate((candidate) => onIceCandidate?.call(peerId, candidate));
++    conn.onChannelOpen(() => onChannelOpen?.call(peerId));
+ 
+     await conn.setRemoteDescription(sdp);
+     final answer = await conn.createAnswer();
+diff --git a/lib/core/storage/repositories/tx_repository.dart b/lib/core/storage/repositories/tx_repository.dart
+index 57360c8..e993b8f 100644
+--- a/lib/core/storage/repositories/tx_repository.dart
++++ b/lib/core/storage/repositories/tx_repository.dart
+@@ -1,13 +1,49 @@
+-import '../entities/tx_entity.dart';
++import 'dart:convert';
++import 'package:shared_preferences/shared_preferences.dart';
++import '../../dag/transaction_model.dart';
+ 
++/// Persiste les transactions FINALISÉES du DAG local (confirmées par au
++/// moins `requiredConfirmations` pairs distincts de l'émetteur), pour
++/// qu'elles survivent au redémarrage de l'app — ce que `DagEngine.ledger`
++/// (une simple Map en mémoire) ne fait pas seul.
++///
++/// Volontairement : seules les tx finales sont écrites ici. Une tx
++/// committée mais pas encore finale pourrait encore ne jamais être
++/// confirmée ; on ne veut acter dans le stockage que ce qui l'est déjà
++/// réellement, jamais un état provisoire.
++///
++/// Même pattern que `WalletRepository` (cache en mémoire + JSON dans
++/// shared_preferences) : pas de dépendance ObjectBox, qui n'est pas
++/// présente dans pubspec.yaml pour l'instant.
+ class TxRepository {
+-  final List<TxEntity> _cache = [];
++  final List<Transaction> _cache = [];
++  static const String _key = 'doro_finalized_txs';
+ 
+-  void save(TxEntity tx) {
++  /// Ordre = ordre d'insertion = ordre de finalisation d'origine.
++  /// Important pour `DagEngine.restoreFinalized`, qui a besoin que les
++  /// parents d'une tx soient restaurés avant elle.
++  List<Transaction> all() => List.unmodifiable(_cache);
++
++  Future<void> saveFinalized(Transaction tx) async {
++    if (_cache.any((t) => t.id == tx.id)) return;
+     _cache.add(tx);
++    await _persist();
++  }
++
++  Future<void> load() async {
++    final prefs = await SharedPreferences.getInstance();
++    final data = prefs.getStringList(_key);
++    if (data == null) return;
++
++    _cache.clear();
++    for (final item in data) {
++      _cache.add(Transaction.fromJson(jsonDecode(item) as Map<String, dynamic>));
++    }
+   }
+ 
+-  List<TxEntity> getAll() {
+-    return List.unmodifiable(_cache);
++  Future<void> _persist() async {
++    final prefs = await SharedPreferences.getInstance();
++    final data = _cache.map((tx) => jsonEncode(tx.toJson())).toList();
++    await prefs.setStringList(_key, data);
+   }
+ }
+diff --git a/lib/features/wallet/wallet_provider.dart b/lib/features/wallet/wallet_provider.dart
+index 6ecab53..d0af9f3 100644
+--- a/lib/features/wallet/wallet_provider.dart
++++ b/lib/features/wallet/wallet_provider.dart
+@@ -135,6 +135,16 @@ class WalletProvider extends ChangeNotifier {
+             "txId": genesisTx.id,
+             "approver": node!.nodeId,
+           });
++
++          // BUG CORRIGÉ : la confirmation ci-dessus finalise bien la tx
++          // dans le DAG, mais rien ne créditait le wallet — contrairement
++          // aux autres chemins de finalisation dans P2PNode
++          // (_handleIncomingTx, _handleIncomingApprove,
++          // _handleSyncResponse), qui appellent tous explicitement le
++          // crédit après confirmation. Le wallet fondateur restait à
++          // zéro tant que cette branche `accepted` était prise.
++          core.creditIfLocal(address, Genesis.maxSupply);
++
+           Logger.info("Transaction genesis diffusée sur le réseau");
+         } else {
+           Logger.warn("Transaction genesis refusée par le DAG local : $result");
+-- 
+2.43.0
+

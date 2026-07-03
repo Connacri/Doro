@@ -18,6 +18,10 @@ class FinalityEngine {
     confirmations[txId] = (confirmations[txId] ?? 0) + 1;
   }
 
+  void markFinalized(String txId) {
+    confirmations[txId] = requiredConfirmations;
+  }
+
   int confirmationsOf(String txId) => confirmations[txId] ?? 0;
 
   bool isFinal(String txId) {
