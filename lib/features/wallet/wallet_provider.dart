@@ -22,7 +22,10 @@ class WalletProvider extends ChangeNotifier {
   final P2PNode? node;
   final CryptoService _crypto = CryptoService();
   StreamSubscription<void>? _walletSub;
-
+/// Seed à faire sauvegarder à l'utilisateur juste après une création
+  /// automatique (1er lancement). Tant que ce n'est pas acquitté via
+  /// clearPendingBackup(), l'UI DOIT bloquer avec le dialogue de backup.
+  String? pendingBackupSeed;
   WalletProvider(this.core, this.repo, {this.node}) {
     _init();
 
