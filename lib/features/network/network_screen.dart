@@ -185,7 +185,7 @@ trailing: IconButton(
       MaterialPageRoute(builder: (_) => ChatScreen(peerId: peerId, peerName: peerId.substring(0, 12))),
     );
   },
-),
+),), 
               ),
             ),
         ],
