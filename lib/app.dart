@@ -19,6 +19,8 @@ import 'core/p2p/p2p_node.dart';
 import 'core/bootstrap/bootstrap_service.dart';
 import 'core/utils/logger.dart';
 import 'core/utils/node_identity.dart';
+import 'features/market/market_provider.dart';
+
 
 class DoroApp extends StatefulWidget {
   final ObjectBoxStore db;
@@ -81,6 +83,11 @@ class _DoroAppState extends State<DoroApp> {
         ),
         ChangeNotifierProvider(create: (_) => LedgerProvider(node)),
         ChangeNotifierProvider(create: (_) => NetworkProvider(node)),
+
+ChangeNotifierProxyProvider<WalletProvider, MarketProvider>(
+  create: (_) => MarketProvider(node),
+  update: (_, wallet, market) => MarketProvider(node, walletProvider: wallet),
+),
       ],
       child: MaterialApp(
         debugShowCheckedModeBanner: false,
