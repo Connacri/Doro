@@ -7,6 +7,8 @@ import 'network_provider.dart';
 import 'my_id_card.dart';
 import 'qr_scan_screen.dart';
 import '../chat/chat_screen.dart';
+// en haut du fichier, ajouter :
+import '../chat/chat_provider.dart';
 
 class NetworkScreen extends StatefulWidget {
   const NetworkScreen({super.key});
