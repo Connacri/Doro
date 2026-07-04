@@ -40,6 +40,22 @@ class WalletProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+/// Seed à faire sauvegarder à l'utilisateur juste après une création
+  /// automatique (1er lancement). Tant que ce n'est pas acquitté via
+  /// clearPendingBackup(), l'UI DOIT bloquer avec le dialogue de backup —
+  /// c'est le SEUL moyen de récupérer ce wallet plus tard.
+  String? pendingBackupSeed;
+
+  WalletProvider(this.core, this.repo, {this.node}) {
+    _init();
+    _walletSub = node?.walletChanges.listen((_) async {
+      await repo.syncFromCore(core);
+      notifyListeners();
+    });
+  }
+
+
+
   void _restoreFromRepo() {
     for (final w in repo.all()) {
       core.restore(w);
