@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import '../utils/logger.dart';
 import 'peer_connection.dart';
 import 'peer_model.dart';
 
@@ -33,7 +34,7 @@ class WebRTCNetworkEngine {
         final data = jsonDecode(msg);
         _messageController.add((from: peerId, data: data));
       } catch (e) {
-        // Not JSON or malformed
+        Logger.warn("Failed to decode message from $peerId: $e");
       }
     };
     conn.onDisconnect(() => removePeer(peerId));
@@ -61,6 +62,7 @@ class WebRTCNetworkEngine {
         final data = jsonDecode(msg);
         _messageController.add((from: peerId, data: data));
       } catch (e) {
+        Logger.warn("Failed to decode message from $peerId: $e");
       }
     };
     conn.onDisconnect(() => removePeer(peerId));
