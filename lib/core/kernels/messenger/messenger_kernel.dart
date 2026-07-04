@@ -1,6 +1,6 @@
+// lib/core/kernels/messenger/messenger_kernel.dart
 import 'dart:async';
 import '../../p2p/webrtc_engine.dart';
-import '../../utils/logger.dart';
 import '../../storage/objectbox/store.dart';
 import '../../storage/entities/chat_message_entity.dart';
 import '../../../objectbox.g.dart';
@@ -16,18 +16,8 @@ class MessengerKernel {
 
   final Set<String> _seenChatMessages = {};
 
-  final Set<String> _contacts = {};
-
-  MessengerKernel({
-    required this.nodeId,
-    required this.p2p,
-    required this.db,
-  }) {
+  MessengerKernel({required this.nodeId, required this.p2p, required this.db}) {
     _msgBox = db.getBox<ChatMessageEntity>();
-    _setupHandlers();
-  }
-
-  void _setupHandlers() {
     p2p.messages.listen((msg) {
       final data = msg.data;
       final from = msg.from;
@@ -39,54 +29,38 @@ class MessengerKernel {
 
   void _handleIncomingChat(String from, Map<String, dynamic> data) {
     final fromId = data["from"] as String?;
+    final toId = data["to"] as String?;
     final text = data["text"] as String?;
     final time = data["time"] as String?;
-
     if (fromId == null || text == null || time == null) return;
     if (fromId == nodeId) return;
+    // Message privé : accepté seulement s'il nous est destiné.
+    // Contrairement à l'ancien chat global, AUCUN re-broadcast.
+    if (toId != null && toId != nodeId) return;
 
     final msgKey = "$fromId:$time:${text.hashCode}";
     if (_seenChatMessages.contains(msgKey)) return;
     _seenChatMessages.add(msgKey);
 
-    _msgBox.put(ChatMessageEntity(fromId: fromId, text: text, timestamp: time));
-
+    _msgBox.put(ChatMessageEntity(fromId: fromId, text: text, timestamp: time, peerKey: fromId));
     _messageController.add({"from": from, "data": data});
-
-    p2p.broadcast(data);
   }
 
-  void addContact(String publicKey) {
-    _contacts.add(publicKey);
-    Logger.info("Contact added: $publicKey");
-  }
-
-  void sendChat(String text) {
+  void sendPrivateChat(String toPeerId, String text) {
     final time = DateTime.now().toIso8601String();
-    final data = {
-      "type": "chat",
-      "from": nodeId,
-      "text": text,
-      "time": time,
-    };
+    final data = {"type": "chat", "from": nodeId, "to": toPeerId, "text": text, "time": time};
 
-    final msgKey = "$nodeId:$time:${text.hashCode}";
-    _seenChatMessages.add(msgKey);
-
-    _msgBox.put(ChatMessageEntity(fromId: nodeId, text: text, timestamp: time));
-
-    p2p.broadcast(data);
+    _seenChatMessages.add("$nodeId:$time:${text.hashCode}");
+    _msgBox.put(ChatMessageEntity(fromId: nodeId, text: text, timestamp: time, peerKey: toPeerId));
+    p2p.sendToPeer(toPeerId, data);
   }
 
-  List<Map<String, dynamic>> getHistory() {
-    return _msgBox.getAll().map((e) => {
-      "from": e.fromId,
-      "text": e.text,
-      "time": e.timestamp,
-    }).toList();
+  List<Map<String, dynamic>> historyWith(String peerKey) {
+    return (_msgBox.query(ChatMessageEntity_.peerKey.equals(peerKey)).build().find()
+          ..sort((a, b) => a.timestamp.compareTo(b.timestamp)))
+        .map((e) => {"from": e.fromId, "text": e.text, "time": e.timestamp})
+        .toList();
   }
 
-  void dispose() {
-    _messageController.close();
-  }
+  void dispose() => _messageController.close();
 }
