@@ -1,6 +1,5 @@
 import '../../../objectbox.g.dart';
 import '../../dag/transaction_model.dart';
-
 import '../entities/tx_entity.dart';
 import '../objectbox/store.dart';
 
@@ -19,14 +18,14 @@ class TxRepository {
       to: e.to,
       amount: BigInt.parse(e.amount),
       timestamp: e.timestamp,
-      signature: "", // Reconstruct or fetch from elsewhere if needed
-      nonce: 0,
-      senderPublicKey: "",
-      parents: [],
+      signature: e.signature,
+      nonce: e.nonce,
+      senderPublicKey: e.senderPublicKey,
+      parents: e.parents.split(','),
     )).toList();
   }
 
-  Future<void> saveFinalized(Transaction tx) async {
+  Future<void> save(Transaction tx) async {
     final existing = _box.query(TxEntity_.txId.equals(tx.id)).build().findFirst();
     if (existing != null) return;
 
@@ -36,10 +35,13 @@ class TxRepository {
       to: tx.to,
       amount: tx.amount.toString(),
       timestamp: tx.timestamp,
+      signature: tx.signature,
+      nonce: tx.nonce,
+      senderPublicKey: tx.senderPublicKey,
+      parents: tx.parents.join(','),
     ));
   }
 
   Future<void> load() async {
-    // No-op for ObjectBox as it loads on demand or via getAll()
   }
 }

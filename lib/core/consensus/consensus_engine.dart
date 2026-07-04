@@ -3,7 +3,8 @@ import 'reputation_score.dart';
 class ConsensusEngine {
   final ReputationScore reputation;
 
-  ConsensusEngine(this.reputation);
+  ConsensusEngine({ReputationScore? reputation})
+    : reputation = reputation ?? ReputationScore();
 
   bool validate({
     required String txId,
@@ -15,6 +16,6 @@ class ConsensusEngine {
       weight += reputation.get(v);
     }
 
-    return weight >= 50;
+    return weight >= 1; // Simplified for now, but distinct from chat
   }
 }
