@@ -161,7 +161,8 @@ class P2PNode {
   }
 
   DagAcceptResult broadcastTx(Transaction tx) => walletKernel.broadcastTx(tx);
-  void sendChat(String text) => messengerKernel.sendChat(text);
+  // lib/core/p2p/p2p_node.dart — remplace UNIQUEMENT cette ligne
+void sendChat(String toPeerId, String text) => messengerKernel.sendPrivateChat(toPeerId, text);
   Future<void> selfApprove(String txId) => walletKernel.selfApprove(txId);
 
   void stop() {
