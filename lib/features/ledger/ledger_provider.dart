@@ -7,24 +7,12 @@ class LedgerProvider extends ChangeNotifier {
   final P2PNode node;
 
   LedgerProvider(this.node) {
-    final previousOnCommit = dag.onCommit;
-    dag.onCommit = (tx) {
-      previousOnCommit?.call(tx);
-      notifyListeners();
-    };
-
-    final previousOnFinalized = dag.onFinalized;
-    dag.onFinalized = (tx) {
-      previousOnFinalized?.call(tx);
-      notifyListeners();
-    };
+    // We listen to walletChanges because it covers both commit and finalized
+    // through the WalletKernel.
+    node.walletChanges.listen((_) => notifyListeners());
   }
 
   DagEngine get dag => node.dag;
-
-  void addTx(Transaction tx) {
-    dag.add(tx);
-  }
 
   List<Transaction> get transactions =>
       dag.all()..sort((a, b) => b.timestamp.compareTo(a.timestamp));

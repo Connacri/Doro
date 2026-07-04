@@ -1,4 +1,5 @@
 import '../security/sybil_protection.dart';
+import '../storage/objectbox/store.dart';
 import 'peer_model.dart';
 import 'webrtc_engine.dart';
 
@@ -6,14 +7,14 @@ class PeerManager {
   final WebRTCNetworkEngine engine;
   final SybilProtection sybil;
 
-  PeerManager({
+  PeerManager(ObjectBoxStore db, {
     required this.engine,
     SybilProtection? sybil,
   }) : sybil = sybil ?? SybilProtection();
 
   Future<void> addPeer(Peer peer) async {
     if (sybil.isBlocked(peer.id)) return;
-    await engine.connectPeer(peer);
+    await engine.createOffer(peer.id);
     sybil.increaseTrust(peer.id);
   }
 

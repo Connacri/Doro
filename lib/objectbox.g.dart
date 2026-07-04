@@ -14,6 +14,8 @@ import 'package:objectbox/internal.dart'
 import 'package:objectbox/objectbox.dart' as obx;
 import 'package:objectbox_flutter_libs/objectbox_flutter_libs.dart';
 
+import 'core/storage/entities/chat_message_entity.dart';
+import 'core/storage/entities/contact_entity.dart';
 import 'core/storage/entities/peer_entity.dart';
 import 'core/storage/entities/tx_entity.dart';
 import 'core/storage/entities/wallet_entity.dart';
@@ -65,7 +67,7 @@ final _entities = <obx_int.ModelEntity>[
   obx_int.ModelEntity(
     id: const obx_int.IdUid(2, 7311780424249181613),
     name: 'TxEntity',
-    lastPropertyId: const obx_int.IdUid(6, 2041337083914251737),
+    lastPropertyId: const obx_int.IdUid(10, 8935240952171975496),
     flags: 0,
     properties: <obx_int.ModelProperty>[
       obx_int.ModelProperty(
@@ -105,6 +107,30 @@ final _entities = <obx_int.ModelEntity>[
         type: 6,
         flags: 0,
       ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(7, 4593828079496164321),
+        name: 'signature',
+        type: 9,
+        flags: 0,
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(8, 8455324406619405932),
+        name: 'nonce',
+        type: 6,
+        flags: 0,
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(9, 5899902125612051566),
+        name: 'senderPublicKey',
+        type: 9,
+        flags: 0,
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(10, 8935240952171975496),
+        name: 'parents',
+        type: 9,
+        flags: 0,
+      ),
     ],
     relations: <obx_int.ModelRelation>[],
     backlinks: <obx_int.ModelBacklink>[],
@@ -137,6 +163,69 @@ final _entities = <obx_int.ModelEntity>[
       obx_int.ModelProperty(
         id: const obx_int.IdUid(4, 6503544043971122984),
         name: 'balance',
+        type: 9,
+        flags: 0,
+      ),
+    ],
+    relations: <obx_int.ModelRelation>[],
+    backlinks: <obx_int.ModelBacklink>[],
+  ),
+  obx_int.ModelEntity(
+    id: const obx_int.IdUid(4, 5335436094303860318),
+    name: 'ChatMessageEntity',
+    lastPropertyId: const obx_int.IdUid(4, 2524978173224783778),
+    flags: 0,
+    properties: <obx_int.ModelProperty>[
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(1, 6630709663708312276),
+        name: 'id',
+        type: 6,
+        flags: 1,
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(2, 6419994114331416214),
+        name: 'fromId',
+        type: 9,
+        flags: 0,
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(3, 4714901006043643441),
+        name: 'text',
+        type: 9,
+        flags: 0,
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(4, 2524978173224783778),
+        name: 'timestamp',
+        type: 9,
+        flags: 0,
+      ),
+    ],
+    relations: <obx_int.ModelRelation>[],
+    backlinks: <obx_int.ModelBacklink>[],
+  ),
+  obx_int.ModelEntity(
+    id: const obx_int.IdUid(5, 1686028110842712508),
+    name: 'ContactEntity',
+    lastPropertyId: const obx_int.IdUid(3, 2866140667726920890),
+    flags: 0,
+    properties: <obx_int.ModelProperty>[
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(1, 3924980358639477169),
+        name: 'id',
+        type: 6,
+        flags: 1,
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(2, 6552662445754621125),
+        name: 'publicKey',
+        type: 9,
+        flags: 2048,
+        indexId: const obx_int.IdUid(4, 7934949130102768033),
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(3, 2866140667726920890),
+        name: 'name',
         type: 9,
         flags: 0,
       ),
@@ -189,8 +278,8 @@ obx_int.ModelDefinition getObjectBoxModel() {
     // Typically, this is done with `dart run build_runner build`.
     generatorVersion: obx_int.GeneratorVersion.v2025_12_16,
     entities: _entities,
-    lastEntityId: const obx_int.IdUid(3, 824099985797806823),
-    lastIndexId: const obx_int.IdUid(3, 7646839850102533557),
+    lastEntityId: const obx_int.IdUid(5, 1686028110842712508),
+    lastIndexId: const obx_int.IdUid(4, 7934949130102768033),
     lastRelationId: const obx_int.IdUid(0, 0),
     lastSequenceId: const obx_int.IdUid(0, 0),
     retiredEntityUids: const [],
@@ -274,13 +363,20 @@ obx_int.ModelDefinition getObjectBoxModel() {
         final fromOffset = fbb.writeString(object.from);
         final toOffset = fbb.writeString(object.to);
         final amountOffset = fbb.writeString(object.amount);
-        fbb.startTable(7);
+        final signatureOffset = fbb.writeString(object.signature);
+        final senderPublicKeyOffset = fbb.writeString(object.senderPublicKey);
+        final parentsOffset = fbb.writeString(object.parents);
+        fbb.startTable(11);
         fbb.addInt64(0, object.id);
         fbb.addOffset(1, txIdOffset);
         fbb.addOffset(2, fromOffset);
         fbb.addOffset(3, toOffset);
         fbb.addOffset(4, amountOffset);
         fbb.addInt64(5, object.timestamp);
+        fbb.addOffset(6, signatureOffset);
+        fbb.addInt64(7, object.nonce);
+        fbb.addOffset(8, senderPublicKeyOffset);
+        fbb.addOffset(9, parentsOffset);
         fbb.finish(fbb.endTable());
         return object.id;
       },
@@ -311,6 +407,21 @@ obx_int.ModelDefinition getObjectBoxModel() {
           14,
           0,
         );
+        final signatureParam = const fb.StringReader(
+          asciiOptimization: true,
+        ).vTableGet(buffer, rootOffset, 16, '');
+        final nonceParam = const fb.Int64Reader().vTableGet(
+          buffer,
+          rootOffset,
+          18,
+          0,
+        );
+        final senderPublicKeyParam = const fb.StringReader(
+          asciiOptimization: true,
+        ).vTableGet(buffer, rootOffset, 20, '');
+        final parentsParam = const fb.StringReader(
+          asciiOptimization: true,
+        ).vTableGet(buffer, rootOffset, 22, '');
         final object = TxEntity(
           id: idParam,
           txId: txIdParam,
@@ -318,6 +429,10 @@ obx_int.ModelDefinition getObjectBoxModel() {
           to: toParam,
           amount: amountParam,
           timestamp: timestampParam,
+          signature: signatureParam,
+          nonce: nonceParam,
+          senderPublicKey: senderPublicKeyParam,
+          parents: parentsParam,
         );
 
         return object;
@@ -366,6 +481,96 @@ obx_int.ModelDefinition getObjectBoxModel() {
           address: addressParam,
           publicKey: publicKeyParam,
           balance: balanceParam,
+        );
+
+        return object;
+      },
+    ),
+    ChatMessageEntity: obx_int.EntityDefinition<ChatMessageEntity>(
+      model: _entities[3],
+      toOneRelations: (ChatMessageEntity object) => [],
+      toManyRelations: (ChatMessageEntity object) => {},
+      getId: (ChatMessageEntity object) => object.id,
+      setId: (ChatMessageEntity object, int id) {
+        object.id = id;
+      },
+      objectToFB: (ChatMessageEntity object, fb.Builder fbb) {
+        final fromIdOffset = fbb.writeString(object.fromId);
+        final textOffset = fbb.writeString(object.text);
+        final timestampOffset = fbb.writeString(object.timestamp);
+        fbb.startTable(5);
+        fbb.addInt64(0, object.id);
+        fbb.addOffset(1, fromIdOffset);
+        fbb.addOffset(2, textOffset);
+        fbb.addOffset(3, timestampOffset);
+        fbb.finish(fbb.endTable());
+        return object.id;
+      },
+      objectFromFB: (obx.Store store, ByteData fbData) {
+        final buffer = fb.BufferContext(fbData);
+        final rootOffset = buffer.derefObject(0);
+        final idParam = const fb.Int64Reader().vTableGet(
+          buffer,
+          rootOffset,
+          4,
+          0,
+        );
+        final fromIdParam = const fb.StringReader(
+          asciiOptimization: true,
+        ).vTableGet(buffer, rootOffset, 6, '');
+        final textParam = const fb.StringReader(
+          asciiOptimization: true,
+        ).vTableGet(buffer, rootOffset, 8, '');
+        final timestampParam = const fb.StringReader(
+          asciiOptimization: true,
+        ).vTableGet(buffer, rootOffset, 10, '');
+        final object = ChatMessageEntity(
+          id: idParam,
+          fromId: fromIdParam,
+          text: textParam,
+          timestamp: timestampParam,
+        );
+
+        return object;
+      },
+    ),
+    ContactEntity: obx_int.EntityDefinition<ContactEntity>(
+      model: _entities[4],
+      toOneRelations: (ContactEntity object) => [],
+      toManyRelations: (ContactEntity object) => {},
+      getId: (ContactEntity object) => object.id,
+      setId: (ContactEntity object, int id) {
+        object.id = id;
+      },
+      objectToFB: (ContactEntity object, fb.Builder fbb) {
+        final publicKeyOffset = fbb.writeString(object.publicKey);
+        final nameOffset = fbb.writeString(object.name);
+        fbb.startTable(4);
+        fbb.addInt64(0, object.id);
+        fbb.addOffset(1, publicKeyOffset);
+        fbb.addOffset(2, nameOffset);
+        fbb.finish(fbb.endTable());
+        return object.id;
+      },
+      objectFromFB: (obx.Store store, ByteData fbData) {
+        final buffer = fb.BufferContext(fbData);
+        final rootOffset = buffer.derefObject(0);
+        final idParam = const fb.Int64Reader().vTableGet(
+          buffer,
+          rootOffset,
+          4,
+          0,
+        );
+        final publicKeyParam = const fb.StringReader(
+          asciiOptimization: true,
+        ).vTableGet(buffer, rootOffset, 6, '');
+        final nameParam = const fb.StringReader(
+          asciiOptimization: true,
+        ).vTableGet(buffer, rootOffset, 8, '');
+        final object = ContactEntity(
+          id: idParam,
+          publicKey: publicKeyParam,
+          name: nameParam,
         );
 
         return object;
@@ -435,6 +640,26 @@ class TxEntity_ {
   static final timestamp = obx.QueryIntegerProperty<TxEntity>(
     _entities[1].properties[5],
   );
+
+  /// See [TxEntity.signature].
+  static final signature = obx.QueryStringProperty<TxEntity>(
+    _entities[1].properties[6],
+  );
+
+  /// See [TxEntity.nonce].
+  static final nonce = obx.QueryIntegerProperty<TxEntity>(
+    _entities[1].properties[7],
+  );
+
+  /// See [TxEntity.senderPublicKey].
+  static final senderPublicKey = obx.QueryStringProperty<TxEntity>(
+    _entities[1].properties[8],
+  );
+
+  /// See [TxEntity.parents].
+  static final parents = obx.QueryStringProperty<TxEntity>(
+    _entities[1].properties[9],
+  );
 }
 
 /// [WalletEntity] entity fields to define ObjectBox queries.
@@ -457,5 +682,46 @@ class WalletEntity_ {
   /// See [WalletEntity.balance].
   static final balance = obx.QueryStringProperty<WalletEntity>(
     _entities[2].properties[3],
+  );
+}
+
+/// [ChatMessageEntity] entity fields to define ObjectBox queries.
+class ChatMessageEntity_ {
+  /// See [ChatMessageEntity.id].
+  static final id = obx.QueryIntegerProperty<ChatMessageEntity>(
+    _entities[3].properties[0],
+  );
+
+  /// See [ChatMessageEntity.fromId].
+  static final fromId = obx.QueryStringProperty<ChatMessageEntity>(
+    _entities[3].properties[1],
+  );
+
+  /// See [ChatMessageEntity.text].
+  static final text = obx.QueryStringProperty<ChatMessageEntity>(
+    _entities[3].properties[2],
+  );
+
+  /// See [ChatMessageEntity.timestamp].
+  static final timestamp = obx.QueryStringProperty<ChatMessageEntity>(
+    _entities[3].properties[3],
+  );
+}
+
+/// [ContactEntity] entity fields to define ObjectBox queries.
+class ContactEntity_ {
+  /// See [ContactEntity.id].
+  static final id = obx.QueryIntegerProperty<ContactEntity>(
+    _entities[4].properties[0],
+  );
+
+  /// See [ContactEntity.publicKey].
+  static final publicKey = obx.QueryStringProperty<ContactEntity>(
+    _entities[4].properties[1],
+  );
+
+  /// See [ContactEntity.name].
+  static final name = obx.QueryStringProperty<ContactEntity>(
+    _entities[4].properties[2],
   );
 }
