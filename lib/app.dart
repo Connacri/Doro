@@ -1,19 +1,20 @@
+// lib/app.dart
 import 'dart:io' show Platform;
-
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import 'features/home/home_screen.dart';
 import 'features/wallet/wallet_provider.dart';
 import 'features/wallet/wallet_screen.dart';
-import 'features/chat/chat_screen.dart';
+import 'features/chat/amis_screen.dart';
 import 'features/chat/chat_provider.dart';
 import 'features/ledger/ledger_provider.dart';
-import 'features/ledger/ledger_screen.dart';
 import 'features/network/network_provider.dart';
 import 'features/network/network_screen.dart';
 
 import 'core/storage/objectbox/store.dart';
 import 'core/storage/repositories/wallet_repository.dart';
+import 'core/storage/repositories/contact_repository.dart';
 import 'core/p2p/p2p_node.dart';
 import 'core/bootstrap/bootstrap_service.dart';
 import 'core/utils/logger.dart';
@@ -22,7 +23,6 @@ import 'core/utils/node_identity.dart';
 class DoroApp extends StatefulWidget {
   final ObjectBoxStore db;
   const DoroApp({super.key, required this.db});
-
   @override
   State<DoroApp> createState() => _DoroAppState();
 }
@@ -30,27 +30,27 @@ class DoroApp extends StatefulWidget {
 class _DoroAppState extends State<DoroApp> {
   P2PNode? _node;
   late final WalletRepository _walletRepo;
+  late final ContactRepository _contactRepo;
 
   @override
   void initState() {
     super.initState();
     _walletRepo = WalletRepository(widget.db);
+    _contactRepo = ContactRepository(widget.db);
     if (!Platform.environment.containsKey('FLUTTER_TEST')) {
       _initNode();
     }
   }
 
   Future<void> _initNode() async {
-    final nodeId = await NodeIdentity.getOrCreate();
-    final node = P2PNode(nodeId, widget.db);
+    final identity = await NodeIdentity.getOrCreate();
+    final node = P2PNode(identity, widget.db);
     _node = node;
     if (!mounted) return;
     setState(() {});
     try {
       final seeds = BootstrapService.getSeeds();
-      if (seeds.isNotEmpty) {
-        await node.start(signalingUrl: seeds.first);
-      }
+      if (seeds.isNotEmpty) await node.start(signalingUrl: seeds.first);
     } catch (e) {
       Logger.error("Bootstrap failed: $e");
     }
@@ -74,12 +74,10 @@ class _DoroAppState extends State<DoroApp> {
 
     return MultiProvider(
       providers: [
-        ChangeNotifierProvider(
-          create: (_) => WalletProvider(node.wallet, _walletRepo, node: node),
-        ),
+        ChangeNotifierProvider(create: (_) => WalletProvider(node.wallet, _walletRepo, node: node)),
         ChangeNotifierProxyProvider<WalletProvider, ChatProvider>(
-          create: (_) => ChatProvider(node),
-          update: (_, wallet, chat) => ChatProvider(node, walletProvider: wallet),
+          create: (_) => ChatProvider(node, _contactRepo),
+          update: (_, wallet, chat) => ChatProvider(node, _contactRepo, walletProvider: wallet),
         ),
         ChangeNotifierProvider(create: (_) => LedgerProvider(node)),
         ChangeNotifierProvider(create: (_) => NetworkProvider(node)),
@@ -87,11 +85,7 @@ class _DoroAppState extends State<DoroApp> {
       child: MaterialApp(
         debugShowCheckedModeBanner: false,
         title: "Doro",
-        theme: ThemeData(
-          brightness: Brightness.dark,
-          colorSchemeSeed: const Color(0xFF6C5CE7),
-          useMaterial3: true,
-        ),
+        theme: ThemeData(brightness: Brightness.dark, colorSchemeSeed: const Color(0xFF6C5CE7), useMaterial3: true),
         home: const Root(),
       ),
     );
@@ -100,7 +94,6 @@ class _DoroAppState extends State<DoroApp> {
 
 class Root extends StatefulWidget {
   const Root({super.key});
-
   @override
   State<Root> createState() => _RootState();
 }
@@ -115,32 +108,22 @@ class _RootState extends State<Root> {
 
     return Scaffold(
       body: IndexedStack(index: index, children: const [
+        HomeScreen(),
         WalletScreen(),
-        ChatScreen(),
-        LedgerScreen(),
+        AmisScreen(),
         NetworkScreen(),
       ]),
       bottomNavigationBar: NavigationBar(
         selectedIndex: index,
         onDestinationSelected: (i) => setState(() => index = i),
         destinations: [
+          const NavigationDestination(icon: Icon(Icons.home), label: "Home"),
           const NavigationDestination(icon: Icon(Icons.wallet), label: "Wallet"),
           NavigationDestination(
-            icon: Badge(
-              isLabelVisible: online > 0,
-              label: Text("$online"),
-              child: const Icon(Icons.chat),
-            ),
-            label: "Chat",
+            icon: Badge(isLabelVisible: online > 0, label: Text("$online"), child: const Icon(Icons.people)),
+            label: "Amis",
           ),
-          const NavigationDestination(icon: Icon(Icons.book), label: "Ledger"),
-          NavigationDestination(
-            icon: Icon(
-              Icons.wifi,
-              color: net.isConnected ? Colors.green : Colors.grey,
-            ),
-            label: "Network",
-          ),
+          NavigationDestination(icon: Icon(Icons.wifi, color: net.isConnected ? Colors.green : Colors.grey), label: "Network"),
         ],
       ),
     );
