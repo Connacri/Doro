@@ -1,144 +1,199 @@
-// lib/features/chat/chat_screen.dart
+// lib/features/wallet/wallet_screen.dart
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
-import 'chat_provider.dart';
+import 'wallet_provider.dart';
+import 'send_screen.dart';
+import '../ledger/ledger_provider.dart';
+import '../chat/chat_provider.dart';
+import '../chat/chat_screen.dart';
+import '../../core/wallet/genesis.dart';
+import '../../core/wallet/token_config.dart';
 
-class ChatScreen extends StatefulWidget {
-  final String peerId;
-  final String peerName;
-  const ChatScreen({super.key, required this.peerId, required this.peerName});
-
-  @override
-  State<ChatScreen> createState() => _ChatScreenState();
+String formatDoro(BigInt atomicBalance) {
+  const decimals = 18;
+  final divisor = BigInt.from(10).pow(decimals);
+  final whole = atomicBalance ~/ divisor;
+  final fraction = (atomicBalance % divisor).toString().padLeft(decimals, '0').substring(0, 6);
+  final wholeStr = whole.toString().replaceAllMapped(RegExp(r'\B(?=(\d{3})+(?!\d))'), (m) => ' ');
+  return "$wholeStr.$fraction ${TokenConfig.symbol}";
 }
 
-class _ChatScreenState extends State<ChatScreen> {
-  final controller = TextEditingController();
-  final scrollCtrl = ScrollController();
-
+class WalletScreen extends StatefulWidget {
+  const WalletScreen({super.key});
   @override
-  void dispose() {
-    controller.dispose();
-    scrollCtrl.dispose();
-    super.dispose();
-  }
+  State<WalletScreen> createState() => _WalletScreenState();
+}
 
-  void _send(BuildContext context) {
-    final text = controller.text;
-    if (text.trim().isEmpty) return;
-    context.read<ChatProvider>().send(widget.peerId, text);
-    controller.clear();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (scrollCtrl.hasClients) {
-        scrollCtrl.animateTo(scrollCtrl.position.maxScrollExtent,
-            duration: const Duration(milliseconds: 200), curve: Curves.easeOut);
-      }
-    });
-  }
+class _WalletScreenState extends State<WalletScreen> {
+  bool _backupPromptShown = false;
 
-  void _sendCrypto(BuildContext context) {
-    final amountController = TextEditingController();
-    showDialog(
+  Future<void> _showBackupDialog(BuildContext context, String seedHex, {required bool auto}) async {
+    await showDialog(
       context: context,
+      barrierDismissible: false,
       builder: (ctx) => AlertDialog(
-        title: Text("Envoyer des DORO à ${widget.peerName}"),
-        content: TextField(
-          controller: amountController,
-          decoration: const InputDecoration(labelText: "Montant"),
-          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+        title: Text(auto ? "Ton wallet a été créé — Sauvegarde obligatoire" : "Wallet créé — Sauvegarde obligatoire"),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              "Voici ta seed (clé privée). Elle est le SEUL moyen de récupérer tes fonds "
+              "si tu perds l'accès à cet appareil.\n\nNote-la sur un papier et conserve-la "
+              "dans un endroit sûr. Ne la partage JAMAIS avec personne.",
+              style: TextStyle(fontSize: 13),
+            ),
+            const SizedBox(height: 16),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(color: Colors.grey.shade900, borderRadius: BorderRadius.circular(8)),
+              child: SelectableText(seedHex, style: const TextStyle(fontFamily: 'monospace', fontSize: 13)),
+            ),
+          ],
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("Annuler")),
-          FilledButton(
-            onPressed: () async {
-              final amountStr = amountController.text.trim();
-              if (amountStr.isEmpty) return;
-              final amount = BigInt.from(double.parse(amountStr) * 1e18);
-              final navigator = Navigator.of(ctx);
-              final scaffoldMessenger = ScaffoldMessenger.of(context);
-              final ok = await context.read<ChatProvider>().sendCrypto(widget.peerId, amount);
-              navigator.pop();
-              scaffoldMessenger.showSnackBar(SnackBar(content: Text(ok ? "Transfert réussi" : "Échec du transfert")));
+          FilledButton.icon(
+            icon: const Icon(Icons.copy, size: 16),
+            label: const Text("Copier la seed"),
+            onPressed: () {
+              Clipboard.setData(ClipboardData(text: seedHex));
+              ScaffoldMessenger.of(ctx).showSnackBar(const SnackBar(content: Text("Seed copiée")));
             },
-            child: const Text("Envoyer"),
           ),
+          const SizedBox(width: 8),
+          TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text("J'ai sauvegardé ma seed")),
         ],
       ),
     );
   }
 
+  Future<void> _createWallet(BuildContext context) async {
+    final provider = context.read<WalletProvider>();
+    final result = await provider.createWallet();
+    if (!context.mounted) return;
+    await _showBackupDialog(context, result.seedHex, auto: false);
+  }
+
+  Future<void> _importWallet(BuildContext context) async {
+    final controller = TextEditingController();
+    final seed = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text("Importer un wallet"),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text("Colle ta seed (64 caractères hex). Ne la partage jamais.",
+                style: TextStyle(fontSize: 13, color: Colors.grey)),
+            const SizedBox(height: 12),
+            TextField(
+              controller: controller,
+              obscureText: true,
+              decoration: const InputDecoration(labelText: "Seed (64 caractères hex)", border: OutlineInputBorder()),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text("Annuler")),
+          FilledButton(onPressed: () => Navigator.of(ctx).pop(controller.text), child: const Text("Importer")),
+        ],
+      ),
+    );
+    if (seed == null || seed.trim().isEmpty || !context.mounted) return;
+    final provider = context.read<WalletProvider>();
+    try {
+      final wallet = await provider.importWallet(seed);
+      if (!context.mounted) return;
+      final isGenesis = Genesis.isGenesisAddress(wallet.address);
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(isGenesis
+            ? "Wallet fondateur restauré — solde ${formatDoro(wallet.balance)}"
+            : "Wallet importé : ${wallet.address}"),
+      ));
+    } catch (e) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Import impossible : $e")));
+    }
+  }
+
+  Future<void> _openChatWith(BuildContext context, String peerId) async {
+    final chat = context.read<ChatProvider>();
+    await chat.addContact(peerId);
+    if (!context.mounted) return;
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => ChatScreen(peerId: peerId, peerName: peerId.substring(0, 12))),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    final provider = context.watch<ChatProvider>();
-    final messages = provider.messagesWith(widget.peerId);
-    final online = provider.isOnline(widget.peerId);
+    final provider = context.watch<WalletProvider>();
+    final ledger = context.watch<LedgerProvider>();
+
+    if (!_backupPromptShown && provider.pendingBackupSeed != null) {
+      _backupPromptShown = true;
+      final seed = provider.pendingBackupSeed!;
+      WidgetsBinding.instance.addPostFrameCallback((_) async {
+        await _showBackupDialog(context, seed, auto: true);
+        if (context.mounted) context.read<WalletProvider>().clearPendingBackup();
+      });
+    }
+
+    final myAddress = provider.wallets.isNotEmpty ? provider.wallets.first.address : null;
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(widget.peerName),
+        title: const Text("Wallet"),
         actions: [
-          IconButton(icon: const Icon(Icons.currency_bitcoin), tooltip: "Envoyer Crypto", onPressed: () => _sendCrypto(context)),
-          Padding(
-            padding: const EdgeInsets.only(right: 12),
-            child: Center(child: Icon(Icons.circle, size: 10, color: online ? Colors.green : Colors.grey)),
-          ),
+          IconButton(icon: const Icon(Icons.key), tooltip: "Importer un wallet", onPressed: () => _importWallet(context)),
         ],
       ),
-      // top:false car l'AppBar gère déjà la status bar — évite un double
-      // padding en haut ; bottom:true est ce qui protège des boutons de
-      // navigation Android en bas.
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: () => _createWallet(context),
+        icon: const Icon(Icons.add),
+        label: const Text("Créer un wallet"),
+      ),
       body: SafeArea(
-        top: false,
-        child: Column(
+        child: ListView(
           children: [
-            Expanded(
-              child: messages.isEmpty
-                  ? const Center(child: Text("Aucun message. Envoie le premier !"))
-                  : ListView.builder(
-                      controller: scrollCtrl,
-                      padding: const EdgeInsets.all(8),
-                      itemCount: messages.length,
-                      itemBuilder: (context, index) {
-                        final msg = messages[index];
-                        final isMine = msg["from"] == provider.myId;
-                        final isTx = msg["type"] == "tx_info";
-                        return Align(
-                          alignment: isMine ? Alignment.centerRight : Alignment.centerLeft,
-                          child: Container(
-                            margin: const EdgeInsets.symmetric(vertical: 4),
-                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                            decoration: BoxDecoration(
-                              color: isTx
-                                  ? Colors.amber.shade900.withValues(alpha: 0.5)
-                                  : (isMine ? Colors.purple.shade800 : Colors.grey.shade800),
-                              borderRadius: BorderRadius.circular(12),
-                              border: isTx ? Border.all(color: Colors.amber) : null,
-                            ),
-                            child: Text(msg["text"] ?? "",
-                                style: TextStyle(
-                                    fontWeight: isTx ? FontWeight.bold : FontWeight.normal,
-                                    fontStyle: isTx ? FontStyle.italic : FontStyle.normal)),
-                          ),
-                        );
-                      },
-                    ),
-            ),
-            Padding(
-              padding: const EdgeInsets.all(8),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: TextField(
-                      controller: controller,
-                      decoration: const InputDecoration(hintText: "Écris un message...", border: OutlineInputBorder()),
-                      onSubmitted: (_) => _send(context),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  IconButton.filled(icon: const Icon(Icons.send), onPressed: () => _send(context)),
-                ],
+            if (provider.wallets.isEmpty)
+              const Padding(
+                padding: EdgeInsets.all(24),
+                child: Center(child: Text("Aucun wallet pour l'instant.", textAlign: TextAlign.center)),
               ),
-            ),
+            ...provider.wallets.map((w) {
+              final isGenesis = Genesis.isGenesisAddress(w.address);
+              return ListTile(
+                leading: Icon(isGenesis ? Icons.stars : Icons.account_balance_wallet, color: isGenesis ? Colors.amber : null),
+                title: Text(w.address, style: const TextStyle(fontFamily: 'monospace', fontSize: 13), overflow: TextOverflow.ellipsis),
+                subtitle: Text(formatDoro(w.balance), style: TextStyle(fontWeight: FontWeight.bold, color: isGenesis ? Colors.amber[800] : null)),
+                trailing: isGenesis ? const Chip(label: Text("Fondateur"), visualDensity: VisualDensity.compact) : null,
+              );
+            }),
+            const Divider(),
+            const SendScreen(),
+            const Divider(),
+            const Padding(padding: EdgeInsets.fromLTRB(16, 8, 16, 4), child: Text("Transactions", style: TextStyle(fontWeight: FontWeight.bold))),
+            if (ledger.transactions.isEmpty)
+              const Padding(padding: EdgeInsets.all(16), child: Text("Aucune transaction pour l'instant.")),
+            ...ledger.transactions.map((tx) {
+              final isSent = tx.from == myAddress;
+              final counterparty = isSent ? tx.to : tx.from;
+              return ListTile(
+                leading: Icon(isSent ? Icons.arrow_upward : Icons.arrow_downward, color: isSent ? Colors.redAccent : Colors.greenAccent),
+                title: Text(counterparty, style: const TextStyle(fontFamily: 'monospace', fontSize: 12), overflow: TextOverflow.ellipsis),
+                subtitle: Text("${formatDoro(tx.amount)} — ${ledger.isFinal(tx.id) ? 'confirmé' : '${ledger.confirmationsOf(tx.id)} confirmation(s)'}"),
+                trailing: IconButton(
+                  icon: const Icon(Icons.chat_bubble_outline),
+                  tooltip: "Discuter",
+                  onPressed: () => _openChatWith(context, counterparty),
+                ),
+              );
+            }),
           ],
         ),
       ),
