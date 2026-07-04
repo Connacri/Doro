@@ -173,16 +173,19 @@ class _NetworkScreenState extends State<NetworkScreen> {
                   leading: const Icon(Icons.person, color: Colors.green),
                   title: Text(peerId, overflow: TextOverflow.ellipsis),
                   subtitle: const Text("Connecté"),
-                  trailing: IconButton(
-                    icon: const Icon(Icons.chat_bubble_outline),
-                    tooltip: "Discuter",
-                    onPressed: () {
-                      Navigator.of(context).push(
-                        MaterialPageRoute(builder: (_) => const ChatScreen()),
-                      );
-                    },
-                  ),
-                ),
+                  // remplacer le bouton "Discuter" dans le ListTile des pairs connectés :
+trailing: IconButton(
+  icon: const Icon(Icons.chat_bubble_outline),
+  tooltip: "Discuter",
+  onPressed: () async {
+    final chat = context.read<ChatProvider>();
+    await chat.addContact(peerId);
+    if (!context.mounted) return;
+    Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => ChatScreen(peerId: peerId, peerName: peerId.substring(0, 12))),
+    );
+  },
+),
               ),
             ),
         ],
