@@ -14,6 +14,10 @@ import 'peer_model.dart';
 import 'webrtc_engine.dart';
 import 'signaling_client.dart';
 import 'peer_manager.dart';
+import '../kernels/market/market_kernel.dart';
+import '../storage/repositories/order_repository.dart';
+import '../storage/repositories/trade_repository.dart';
+
 
 class P2PNode {
   final String nodeId;
@@ -32,6 +36,11 @@ class P2PNode {
 
   bool isSignalingConnected = false;
   Timer? _healthTimer;
+
+late final MarketKernel marketKernel;
+  late final OrderRepository orderRepo;
+  late final TradeRepository tradeRepo;
+
 
   P2PNode(this.identity, ObjectBoxStore db) : nodeId = identity.nodeId {
     p2p = WebRTCNetworkEngine(nodeId);
@@ -57,6 +66,10 @@ class P2PNode {
       p2p: p2p,
       db: db,
     );
+orderRepo = OrderRepository(db);
+    tradeRepo = TradeRepository(db);
+    marketKernel = MarketKernel(identity: identity, p2p: p2p, orderRepo: orderRepo, tradeRepo: tradeRepo);
+
   }
 
   Stream<Map<String, dynamic>> get messages => messengerKernel.messages;
@@ -172,5 +185,6 @@ void sendChat(String toPeerId, String text) => messengerKernel.sendPrivateChat(t
     walletKernel.dispose();
     messengerKernel.dispose();
     _networkChangeController.close();
+marketKernel.dispose()
   }
 }
