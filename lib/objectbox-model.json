@@ -133,7 +133,7 @@
     },
     {
       "id": "4:5335436094303860318",
-      "lastPropertyId": "4:2524978173224783778",
+      "lastPropertyId": "5:7218074291633077550",
       "name": "ChatMessageEntity",
       "properties": [
         {
@@ -155,6 +155,11 @@
         {
           "id": "4:2524978173224783778",
           "name": "timestamp",
+          "type": 9
+        },
+        {
+          "id": "5:7218074291633077550",
+          "name": "peerKey",
           "type": 9
         }
       ],
@@ -185,10 +190,147 @@
         }
       ],
       "relations": []
+    },
+    {
+      "id": "6:3514926547071224835",
+      "lastPropertyId": "12:6601812922073934806",
+      "name": "OrderEntity",
+      "properties": [
+        {
+          "id": "1:1016734014630011280",
+          "name": "id",
+          "type": 6,
+          "flags": 1
+        },
+        {
+          "id": "2:3898152764200034778",
+          "name": "orderId",
+          "indexId": "5:8656349092360386880",
+          "type": 9,
+          "flags": 2080
+        },
+        {
+          "id": "3:8832904931419919585",
+          "name": "makerId",
+          "type": 9
+        },
+        {
+          "id": "4:9073080432425699742",
+          "name": "makerPublicKey",
+          "type": 9
+        },
+        {
+          "id": "5:4503214423131925486",
+          "name": "side",
+          "type": 9
+        },
+        {
+          "id": "6:4683650689594506679",
+          "name": "amount",
+          "type": 9
+        },
+        {
+          "id": "7:8772814773561370415",
+          "name": "pricePerUnit",
+          "type": 9
+        },
+        {
+          "id": "8:3562229369993562913",
+          "name": "currency",
+          "type": 9
+        },
+        {
+          "id": "9:5096448574650280521",
+          "name": "timestamp",
+          "type": 6
+        },
+        {
+          "id": "10:3789788757968220077",
+          "name": "signature",
+          "type": 9
+        },
+        {
+          "id": "11:2229829507009054668",
+          "name": "cancelled",
+          "type": 1
+        },
+        {
+          "id": "12:6601812922073934806",
+          "name": "filled",
+          "type": 1
+        }
+      ],
+      "relations": []
+    },
+    {
+      "id": "7:8669368689967754010",
+      "lastPropertyId": "11:5780349021892373608",
+      "name": "TradeEntity",
+      "properties": [
+        {
+          "id": "1:1373744531837982775",
+          "name": "id",
+          "type": 6,
+          "flags": 1
+        },
+        {
+          "id": "2:1190182512710062587",
+          "name": "tradeId",
+          "indexId": "6:5031784824469073300",
+          "type": 9,
+          "flags": 2080
+        },
+        {
+          "id": "3:1014341879418553126",
+          "name": "orderId",
+          "type": 9
+        },
+        {
+          "id": "4:4893679701587591797",
+          "name": "sellerId",
+          "type": 9
+        },
+        {
+          "id": "5:8886310627661560059",
+          "name": "buyerId",
+          "type": 9
+        },
+        {
+          "id": "6:8593379072817594795",
+          "name": "amount",
+          "type": 9
+        },
+        {
+          "id": "7:9104291013286178446",
+          "name": "pricePerUnit",
+          "type": 9
+        },
+        {
+          "id": "8:3528233842763390316",
+          "name": "currency",
+          "type": 9
+        },
+        {
+          "id": "9:3875853806697162926",
+          "name": "timestamp",
+          "type": 6
+        },
+        {
+          "id": "10:4171535881075477312",
+          "name": "status",
+          "type": 9
+        },
+        {
+          "id": "11:5780349021892373608",
+          "name": "txId",
+          "type": 9
+        }
+      ],
+      "relations": []
     }
   ],
-  "lastEntityId": "5:1686028110842712508",
-  "lastIndexId": "4:7934949130102768033",
+  "lastEntityId": "7:8669368689967754010",
+  "lastIndexId": "6:5031784824469073300",
   "lastRelationId": "0:0",
   "lastSequenceId": "0:0",
   "modelVersion": 5,

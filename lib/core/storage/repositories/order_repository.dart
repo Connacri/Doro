@@ -1,5 +1,5 @@
 // lib/core/storage/repositories/order_repository.dart
-import '../../../objectbox.g.dart';
+import '../../../objectbox.g.dart' hide Order;
 import '../../market/order_model.dart';
 import '../entities/order_entity.dart';
 import '../objectbox/store.dart';

@@ -185,6 +185,6 @@ void sendChat(String toPeerId, String text) => messengerKernel.sendPrivateChat(t
     walletKernel.dispose();
     messengerKernel.dispose();
     _networkChangeController.close();
-marketKernel.dispose()
+marketKernel.dispose();
   }
 }

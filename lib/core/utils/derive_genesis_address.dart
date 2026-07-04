@@ -2,7 +2,7 @@
 import 'dart:io';
 import 'package:cryptography/cryptography.dart';
 
-/// Usage : dart run tool/derive_genesis_address.dart <seedHex_64_caracteres>
+/// Usage : dart run tool/derive_genesis_address.dart `seedHex_64_caracteres`
 /// Ne transmet jamais la seed nulle part — calcul 100% local.
 Future<void> main(List<String> args) async {
   if (args.isEmpty) {
@@ -14,6 +14,7 @@ Future<void> main(List<String> args) async {
   final publicKey = await keyPair.extractPublicKey();
   final pubKeyHex =
       publicKey.bytes.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
+  // ignore: avoid_print
   print("Nouvelle Genesis.genesisAddress = 0x$pubKeyHex");
 }
 

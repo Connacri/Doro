@@ -16,7 +16,9 @@ import 'package:objectbox_flutter_libs/objectbox_flutter_libs.dart';
 
 import 'core/storage/entities/chat_message_entity.dart';
 import 'core/storage/entities/contact_entity.dart';
+import 'core/storage/entities/order_entity.dart';
 import 'core/storage/entities/peer_entity.dart';
+import 'core/storage/entities/trade_entity.dart';
 import 'core/storage/entities/tx_entity.dart';
 import 'core/storage/entities/wallet_entity.dart';
 
@@ -173,7 +175,7 @@ final _entities = <obx_int.ModelEntity>[
   obx_int.ModelEntity(
     id: const obx_int.IdUid(4, 5335436094303860318),
     name: 'ChatMessageEntity',
-    lastPropertyId: const obx_int.IdUid(4, 2524978173224783778),
+    lastPropertyId: const obx_int.IdUid(5, 7218074291633077550),
     flags: 0,
     properties: <obx_int.ModelProperty>[
       obx_int.ModelProperty(
@@ -197,6 +199,12 @@ final _entities = <obx_int.ModelEntity>[
       obx_int.ModelProperty(
         id: const obx_int.IdUid(4, 2524978173224783778),
         name: 'timestamp',
+        type: 9,
+        flags: 0,
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(5, 7218074291633077550),
+        name: 'peerKey',
         type: 9,
         flags: 0,
       ),
@@ -226,6 +234,166 @@ final _entities = <obx_int.ModelEntity>[
       obx_int.ModelProperty(
         id: const obx_int.IdUid(3, 2866140667726920890),
         name: 'name',
+        type: 9,
+        flags: 0,
+      ),
+    ],
+    relations: <obx_int.ModelRelation>[],
+    backlinks: <obx_int.ModelBacklink>[],
+  ),
+  obx_int.ModelEntity(
+    id: const obx_int.IdUid(6, 3514926547071224835),
+    name: 'OrderEntity',
+    lastPropertyId: const obx_int.IdUid(12, 6601812922073934806),
+    flags: 0,
+    properties: <obx_int.ModelProperty>[
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(1, 1016734014630011280),
+        name: 'id',
+        type: 6,
+        flags: 1,
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(2, 3898152764200034778),
+        name: 'orderId',
+        type: 9,
+        flags: 2080,
+        indexId: const obx_int.IdUid(5, 8656349092360386880),
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(3, 8832904931419919585),
+        name: 'makerId',
+        type: 9,
+        flags: 0,
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(4, 9073080432425699742),
+        name: 'makerPublicKey',
+        type: 9,
+        flags: 0,
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(5, 4503214423131925486),
+        name: 'side',
+        type: 9,
+        flags: 0,
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(6, 4683650689594506679),
+        name: 'amount',
+        type: 9,
+        flags: 0,
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(7, 8772814773561370415),
+        name: 'pricePerUnit',
+        type: 9,
+        flags: 0,
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(8, 3562229369993562913),
+        name: 'currency',
+        type: 9,
+        flags: 0,
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(9, 5096448574650280521),
+        name: 'timestamp',
+        type: 6,
+        flags: 0,
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(10, 3789788757968220077),
+        name: 'signature',
+        type: 9,
+        flags: 0,
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(11, 2229829507009054668),
+        name: 'cancelled',
+        type: 1,
+        flags: 0,
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(12, 6601812922073934806),
+        name: 'filled',
+        type: 1,
+        flags: 0,
+      ),
+    ],
+    relations: <obx_int.ModelRelation>[],
+    backlinks: <obx_int.ModelBacklink>[],
+  ),
+  obx_int.ModelEntity(
+    id: const obx_int.IdUid(7, 8669368689967754010),
+    name: 'TradeEntity',
+    lastPropertyId: const obx_int.IdUid(11, 5780349021892373608),
+    flags: 0,
+    properties: <obx_int.ModelProperty>[
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(1, 1373744531837982775),
+        name: 'id',
+        type: 6,
+        flags: 1,
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(2, 1190182512710062587),
+        name: 'tradeId',
+        type: 9,
+        flags: 2080,
+        indexId: const obx_int.IdUid(6, 5031784824469073300),
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(3, 1014341879418553126),
+        name: 'orderId',
+        type: 9,
+        flags: 0,
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(4, 4893679701587591797),
+        name: 'sellerId',
+        type: 9,
+        flags: 0,
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(5, 8886310627661560059),
+        name: 'buyerId',
+        type: 9,
+        flags: 0,
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(6, 8593379072817594795),
+        name: 'amount',
+        type: 9,
+        flags: 0,
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(7, 9104291013286178446),
+        name: 'pricePerUnit',
+        type: 9,
+        flags: 0,
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(8, 3528233842763390316),
+        name: 'currency',
+        type: 9,
+        flags: 0,
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(9, 3875853806697162926),
+        name: 'timestamp',
+        type: 6,
+        flags: 0,
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(10, 4171535881075477312),
+        name: 'status',
+        type: 9,
+        flags: 0,
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(11, 5780349021892373608),
+        name: 'txId',
         type: 9,
         flags: 0,
       ),
@@ -278,8 +446,8 @@ obx_int.ModelDefinition getObjectBoxModel() {
     // Typically, this is done with `dart run build_runner build`.
     generatorVersion: obx_int.GeneratorVersion.v2025_12_16,
     entities: _entities,
-    lastEntityId: const obx_int.IdUid(5, 1686028110842712508),
-    lastIndexId: const obx_int.IdUid(4, 7934949130102768033),
+    lastEntityId: const obx_int.IdUid(7, 8669368689967754010),
+    lastIndexId: const obx_int.IdUid(6, 5031784824469073300),
     lastRelationId: const obx_int.IdUid(0, 0),
     lastSequenceId: const obx_int.IdUid(0, 0),
     retiredEntityUids: const [],
@@ -498,11 +666,13 @@ obx_int.ModelDefinition getObjectBoxModel() {
         final fromIdOffset = fbb.writeString(object.fromId);
         final textOffset = fbb.writeString(object.text);
         final timestampOffset = fbb.writeString(object.timestamp);
-        fbb.startTable(5);
+        final peerKeyOffset = fbb.writeString(object.peerKey);
+        fbb.startTable(6);
         fbb.addInt64(0, object.id);
         fbb.addOffset(1, fromIdOffset);
         fbb.addOffset(2, textOffset);
         fbb.addOffset(3, timestampOffset);
+        fbb.addOffset(4, peerKeyOffset);
         fbb.finish(fbb.endTable());
         return object.id;
       },
@@ -524,11 +694,15 @@ obx_int.ModelDefinition getObjectBoxModel() {
         final timestampParam = const fb.StringReader(
           asciiOptimization: true,
         ).vTableGet(buffer, rootOffset, 10, '');
+        final peerKeyParam = const fb.StringReader(
+          asciiOptimization: true,
+        ).vTableGet(buffer, rootOffset, 12, '');
         final object = ChatMessageEntity(
           id: idParam,
           fromId: fromIdParam,
           text: textParam,
           timestamp: timestampParam,
+          peerKey: peerKeyParam,
         );
 
         return object;
@@ -571,6 +745,202 @@ obx_int.ModelDefinition getObjectBoxModel() {
           id: idParam,
           publicKey: publicKeyParam,
           name: nameParam,
+        );
+
+        return object;
+      },
+    ),
+    OrderEntity: obx_int.EntityDefinition<OrderEntity>(
+      model: _entities[5],
+      toOneRelations: (OrderEntity object) => [],
+      toManyRelations: (OrderEntity object) => {},
+      getId: (OrderEntity object) => object.id,
+      setId: (OrderEntity object, int id) {
+        object.id = id;
+      },
+      objectToFB: (OrderEntity object, fb.Builder fbb) {
+        final orderIdOffset = fbb.writeString(object.orderId);
+        final makerIdOffset = fbb.writeString(object.makerId);
+        final makerPublicKeyOffset = fbb.writeString(object.makerPublicKey);
+        final sideOffset = fbb.writeString(object.side);
+        final amountOffset = fbb.writeString(object.amount);
+        final pricePerUnitOffset = fbb.writeString(object.pricePerUnit);
+        final currencyOffset = fbb.writeString(object.currency);
+        final signatureOffset = fbb.writeString(object.signature);
+        fbb.startTable(13);
+        fbb.addInt64(0, object.id);
+        fbb.addOffset(1, orderIdOffset);
+        fbb.addOffset(2, makerIdOffset);
+        fbb.addOffset(3, makerPublicKeyOffset);
+        fbb.addOffset(4, sideOffset);
+        fbb.addOffset(5, amountOffset);
+        fbb.addOffset(6, pricePerUnitOffset);
+        fbb.addOffset(7, currencyOffset);
+        fbb.addInt64(8, object.timestamp);
+        fbb.addOffset(9, signatureOffset);
+        fbb.addBool(10, object.cancelled);
+        fbb.addBool(11, object.filled);
+        fbb.finish(fbb.endTable());
+        return object.id;
+      },
+      objectFromFB: (obx.Store store, ByteData fbData) {
+        final buffer = fb.BufferContext(fbData);
+        final rootOffset = buffer.derefObject(0);
+        final idParam = const fb.Int64Reader().vTableGet(
+          buffer,
+          rootOffset,
+          4,
+          0,
+        );
+        final orderIdParam = const fb.StringReader(
+          asciiOptimization: true,
+        ).vTableGet(buffer, rootOffset, 6, '');
+        final makerIdParam = const fb.StringReader(
+          asciiOptimization: true,
+        ).vTableGet(buffer, rootOffset, 8, '');
+        final makerPublicKeyParam = const fb.StringReader(
+          asciiOptimization: true,
+        ).vTableGet(buffer, rootOffset, 10, '');
+        final sideParam = const fb.StringReader(
+          asciiOptimization: true,
+        ).vTableGet(buffer, rootOffset, 12, '');
+        final amountParam = const fb.StringReader(
+          asciiOptimization: true,
+        ).vTableGet(buffer, rootOffset, 14, '');
+        final pricePerUnitParam = const fb.StringReader(
+          asciiOptimization: true,
+        ).vTableGet(buffer, rootOffset, 16, '');
+        final currencyParam = const fb.StringReader(
+          asciiOptimization: true,
+        ).vTableGet(buffer, rootOffset, 18, '');
+        final timestampParam = const fb.Int64Reader().vTableGet(
+          buffer,
+          rootOffset,
+          20,
+          0,
+        );
+        final signatureParam = const fb.StringReader(
+          asciiOptimization: true,
+        ).vTableGet(buffer, rootOffset, 22, '');
+        final cancelledParam = const fb.BoolReader().vTableGet(
+          buffer,
+          rootOffset,
+          24,
+          false,
+        );
+        final filledParam = const fb.BoolReader().vTableGet(
+          buffer,
+          rootOffset,
+          26,
+          false,
+        );
+        final object = OrderEntity(
+          id: idParam,
+          orderId: orderIdParam,
+          makerId: makerIdParam,
+          makerPublicKey: makerPublicKeyParam,
+          side: sideParam,
+          amount: amountParam,
+          pricePerUnit: pricePerUnitParam,
+          currency: currencyParam,
+          timestamp: timestampParam,
+          signature: signatureParam,
+          cancelled: cancelledParam,
+          filled: filledParam,
+        );
+
+        return object;
+      },
+    ),
+    TradeEntity: obx_int.EntityDefinition<TradeEntity>(
+      model: _entities[6],
+      toOneRelations: (TradeEntity object) => [],
+      toManyRelations: (TradeEntity object) => {},
+      getId: (TradeEntity object) => object.id,
+      setId: (TradeEntity object, int id) {
+        object.id = id;
+      },
+      objectToFB: (TradeEntity object, fb.Builder fbb) {
+        final tradeIdOffset = fbb.writeString(object.tradeId);
+        final orderIdOffset = fbb.writeString(object.orderId);
+        final sellerIdOffset = fbb.writeString(object.sellerId);
+        final buyerIdOffset = fbb.writeString(object.buyerId);
+        final amountOffset = fbb.writeString(object.amount);
+        final pricePerUnitOffset = fbb.writeString(object.pricePerUnit);
+        final currencyOffset = fbb.writeString(object.currency);
+        final statusOffset = fbb.writeString(object.status);
+        final txIdOffset = object.txId == null
+            ? null
+            : fbb.writeString(object.txId!);
+        fbb.startTable(12);
+        fbb.addInt64(0, object.id);
+        fbb.addOffset(1, tradeIdOffset);
+        fbb.addOffset(2, orderIdOffset);
+        fbb.addOffset(3, sellerIdOffset);
+        fbb.addOffset(4, buyerIdOffset);
+        fbb.addOffset(5, amountOffset);
+        fbb.addOffset(6, pricePerUnitOffset);
+        fbb.addOffset(7, currencyOffset);
+        fbb.addInt64(8, object.timestamp);
+        fbb.addOffset(9, statusOffset);
+        fbb.addOffset(10, txIdOffset);
+        fbb.finish(fbb.endTable());
+        return object.id;
+      },
+      objectFromFB: (obx.Store store, ByteData fbData) {
+        final buffer = fb.BufferContext(fbData);
+        final rootOffset = buffer.derefObject(0);
+        final idParam = const fb.Int64Reader().vTableGet(
+          buffer,
+          rootOffset,
+          4,
+          0,
+        );
+        final tradeIdParam = const fb.StringReader(
+          asciiOptimization: true,
+        ).vTableGet(buffer, rootOffset, 6, '');
+        final orderIdParam = const fb.StringReader(
+          asciiOptimization: true,
+        ).vTableGet(buffer, rootOffset, 8, '');
+        final sellerIdParam = const fb.StringReader(
+          asciiOptimization: true,
+        ).vTableGet(buffer, rootOffset, 10, '');
+        final buyerIdParam = const fb.StringReader(
+          asciiOptimization: true,
+        ).vTableGet(buffer, rootOffset, 12, '');
+        final amountParam = const fb.StringReader(
+          asciiOptimization: true,
+        ).vTableGet(buffer, rootOffset, 14, '');
+        final pricePerUnitParam = const fb.StringReader(
+          asciiOptimization: true,
+        ).vTableGet(buffer, rootOffset, 16, '');
+        final currencyParam = const fb.StringReader(
+          asciiOptimization: true,
+        ).vTableGet(buffer, rootOffset, 18, '');
+        final timestampParam = const fb.Int64Reader().vTableGet(
+          buffer,
+          rootOffset,
+          20,
+          0,
+        );
+        final statusParam = const fb.StringReader(
+          asciiOptimization: true,
+        ).vTableGet(buffer, rootOffset, 22, '');
+        final txIdParam = const fb.StringReader(
+          asciiOptimization: true,
+        ).vTableGetNullable(buffer, rootOffset, 24);
+        final object = TradeEntity(
+          id: idParam,
+          tradeId: tradeIdParam,
+          orderId: orderIdParam,
+          sellerId: sellerIdParam,
+          buyerId: buyerIdParam,
+          amount: amountParam,
+          pricePerUnit: pricePerUnitParam,
+          currency: currencyParam,
+          timestamp: timestampParam,
+          status: statusParam,
+          txId: txIdParam,
         );
 
         return object;
@@ -706,6 +1076,11 @@ class ChatMessageEntity_ {
   static final timestamp = obx.QueryStringProperty<ChatMessageEntity>(
     _entities[3].properties[3],
   );
+
+  /// See [ChatMessageEntity.peerKey].
+  static final peerKey = obx.QueryStringProperty<ChatMessageEntity>(
+    _entities[3].properties[4],
+  );
 }
 
 /// [ContactEntity] entity fields to define ObjectBox queries.
@@ -723,5 +1098,126 @@ class ContactEntity_ {
   /// See [ContactEntity.name].
   static final name = obx.QueryStringProperty<ContactEntity>(
     _entities[4].properties[2],
+  );
+}
+
+/// [OrderEntity] entity fields to define ObjectBox queries.
+class OrderEntity_ {
+  /// See [OrderEntity.id].
+  static final id = obx.QueryIntegerProperty<OrderEntity>(
+    _entities[5].properties[0],
+  );
+
+  /// See [OrderEntity.orderId].
+  static final orderId = obx.QueryStringProperty<OrderEntity>(
+    _entities[5].properties[1],
+  );
+
+  /// See [OrderEntity.makerId].
+  static final makerId = obx.QueryStringProperty<OrderEntity>(
+    _entities[5].properties[2],
+  );
+
+  /// See [OrderEntity.makerPublicKey].
+  static final makerPublicKey = obx.QueryStringProperty<OrderEntity>(
+    _entities[5].properties[3],
+  );
+
+  /// See [OrderEntity.side].
+  static final side = obx.QueryStringProperty<OrderEntity>(
+    _entities[5].properties[4],
+  );
+
+  /// See [OrderEntity.amount].
+  static final amount = obx.QueryStringProperty<OrderEntity>(
+    _entities[5].properties[5],
+  );
+
+  /// See [OrderEntity.pricePerUnit].
+  static final pricePerUnit = obx.QueryStringProperty<OrderEntity>(
+    _entities[5].properties[6],
+  );
+
+  /// See [OrderEntity.currency].
+  static final currency = obx.QueryStringProperty<OrderEntity>(
+    _entities[5].properties[7],
+  );
+
+  /// See [OrderEntity.timestamp].
+  static final timestamp = obx.QueryIntegerProperty<OrderEntity>(
+    _entities[5].properties[8],
+  );
+
+  /// See [OrderEntity.signature].
+  static final signature = obx.QueryStringProperty<OrderEntity>(
+    _entities[5].properties[9],
+  );
+
+  /// See [OrderEntity.cancelled].
+  static final cancelled = obx.QueryBooleanProperty<OrderEntity>(
+    _entities[5].properties[10],
+  );
+
+  /// See [OrderEntity.filled].
+  static final filled = obx.QueryBooleanProperty<OrderEntity>(
+    _entities[5].properties[11],
+  );
+}
+
+/// [TradeEntity] entity fields to define ObjectBox queries.
+class TradeEntity_ {
+  /// See [TradeEntity.id].
+  static final id = obx.QueryIntegerProperty<TradeEntity>(
+    _entities[6].properties[0],
+  );
+
+  /// See [TradeEntity.tradeId].
+  static final tradeId = obx.QueryStringProperty<TradeEntity>(
+    _entities[6].properties[1],
+  );
+
+  /// See [TradeEntity.orderId].
+  static final orderId = obx.QueryStringProperty<TradeEntity>(
+    _entities[6].properties[2],
+  );
+
+  /// See [TradeEntity.sellerId].
+  static final sellerId = obx.QueryStringProperty<TradeEntity>(
+    _entities[6].properties[3],
+  );
+
+  /// See [TradeEntity.buyerId].
+  static final buyerId = obx.QueryStringProperty<TradeEntity>(
+    _entities[6].properties[4],
+  );
+
+  /// See [TradeEntity.amount].
+  static final amount = obx.QueryStringProperty<TradeEntity>(
+    _entities[6].properties[5],
+  );
+
+  /// See [TradeEntity.pricePerUnit].
+  static final pricePerUnit = obx.QueryStringProperty<TradeEntity>(
+    _entities[6].properties[6],
+  );
+
+  /// See [TradeEntity.currency].
+  static final currency = obx.QueryStringProperty<TradeEntity>(
+    _entities[6].properties[7],
+  );
+
+  /// See [TradeEntity.timestamp].
+  static final timestamp = obx.QueryIntegerProperty<TradeEntity>(
+    _entities[6].properties[8],
+  );
+
+  /// See [TradeEntity.status].
+  static final status = obx.QueryStringProperty<TradeEntity>(
+    _entities[6].properties[9],
+  );
+
+  /// See [TradeEntity.txId].
+  static final txId = obx.QueryStringProperty<TradeEntity>(
+    _entities[6].properties[10],
   );
 }
