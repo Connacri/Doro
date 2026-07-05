@@ -21,7 +21,11 @@ class TxRepository {
       signature: e.signature,
       nonce: e.nonce,
       senderPublicKey: e.senderPublicKey,
-      parents: e.parents.split(','),
+      // "".split(',') retourne [''] et non [] — sans ce garde-fou, toute
+      // transaction sans parents (ex: la genesis) est rechargée avec un
+      // faux parent "" et se fait rejeter comme "parents inconnus" par
+      // DagEngine au redémarrage de l'app, la faisant disparaître du DAG.
+      parents: e.parents.isEmpty ? const <String>[] : e.parents.split(','),
     )).toList();
   }
 

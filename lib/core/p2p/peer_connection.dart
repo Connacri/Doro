@@ -106,9 +106,16 @@ class PeerConnection {
     return channel;
   }
 
-  void send(String message) {
-    if (!_isOpen) return;
+  /// Retourne `true` si le message a effectivement été transmis au canal
+  /// WebRTC, `false` s'il a été silencieusement abandonné (canal pas
+  /// encore ouvert, ex: négociation ICE en cours ou pair déconnecté).
+  /// L'appelant DOIT vérifier cette valeur : un `false` signifie que le
+  /// message n'a jamais quitté l'appareil et doit être mis en file
+  /// d'attente pour un renvoi ultérieur (voir MessengerKernel.outbox).
+  bool send(String message) {
+    if (!_isOpen) return false;
     _channel?.send(RTCDataChannelMessage(message));
+    return true;
   }
 
   Future<void> close() async {

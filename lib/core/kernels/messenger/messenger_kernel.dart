@@ -18,6 +18,15 @@ class MessengerKernel {
 
   final Set<String> _seenChatMessages = {};
 
+  /// File d'attente des messages qui n'ont PAS pu être transmis
+  /// immédiatement (pair hors ligne ou canal WebRTC encore en
+  /// négociation). Sans cette file, `WebRTCNetworkEngine.sendToPeer`
+  /// abandonnait silencieusement le message — l'UI l'affichait comme
+  /// "envoyé" alors qu'il n'avait jamais quitté l'appareil. Chaque
+  /// entrée est renvoyée automatiquement dès que le canal vers ce pair
+  /// s'ouvre (voir `onPeerChannelOpen`, appelé par P2PNode).
+  final Map<String, List<Map<String, dynamic>>> _outbox = {};
+
   MessengerKernel({required this.nodeId, required this.p2p, required this.db}) {
     _msgBox = db.getBox<ChatMessageEntity>();
     _contactBox = db.getBox<ContactEntity>();
@@ -90,7 +99,7 @@ class MessengerKernel {
       "to": toPeerId,
       "time": DateTime.now().toIso8601String(),
     };
-    p2p.sendToPeer(toPeerId, data);
+    _sendOrQueue(toPeerId, data);
   }
 
   void sendPrivateChat(String toPeerId, String text) {
@@ -99,8 +108,40 @@ class MessengerKernel {
 
     _seenChatMessages.add("$nodeId:$time:${text.hashCode}");
     _msgBox.put(ChatMessageEntity(fromId: nodeId, text: text, timestamp: time, peerKey: toPeerId));
-    p2p.sendToPeer(toPeerId, data);
+    _sendOrQueue(toPeerId, data);
   }
+
+  /// Tente l'envoi immédiat ; si le canal n'est pas prêt (pair hors
+  /// ligne ou négociation WebRTC en cours), met en file d'attente pour
+  /// renvoi automatique dès la reconnexion — le message n'est JAMAIS
+  /// perdu silencieusement tant que le pair finit par revenir en ligne.
+  void _sendOrQueue(String toPeerId, Map<String, dynamic> data) {
+    final delivered = p2p.sendToPeer(toPeerId, data);
+    if (!delivered) {
+      _outbox.putIfAbsent(toPeerId, () => []).add(data);
+    }
+  }
+
+  /// À appeler par P2PNode dès que le canal WebRTC vers `peerId` s'ouvre
+  /// (offre acceptée, connexion établie). Renvoie dans l'ordre tout ce
+  /// qui attendait ce pair précisément.
+  void onPeerChannelOpen(String peerId) {
+    final pending = _outbox.remove(peerId);
+    if (pending == null || pending.isEmpty) return;
+
+    for (final data in pending) {
+      final delivered = p2p.sendToPeer(peerId, data);
+      if (!delivered) {
+        // Le canal s'est refermé entre-temps : on remet en file pour la
+        // prochaine ouverture au lieu de perdre le message.
+        _outbox.putIfAbsent(peerId, () => []).add(data);
+      }
+    }
+  }
+
+  /// Nombre de messages en attente de renvoi pour ce pair (utile pour
+  /// afficher un indicateur "en attente" côté UI si besoin).
+  int pendingCountFor(String peerId) => _outbox[peerId]?.length ?? 0;
 
   List<Map<String, dynamic>> historyWith(String peerKey) {
     return (_msgBox.query(ChatMessageEntity_.peerKey.equals(peerKey)).build().find()

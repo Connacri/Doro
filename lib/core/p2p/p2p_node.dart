@@ -49,6 +49,10 @@ class P2PNode {
     health = NetworkHealth();
 
     p2p.onChannelOpen = (peerId) {
+      // Le canal vient de s'ouvrir : tout message de chat/invitation qui
+      // attendait ce pair précisément peut maintenant partir pour de
+      // vrai (voir MessengerKernel._outbox).
+      messengerKernel.onPeerChannelOpen(peerId);
       _channelReadyController.add(peerId);
       _networkChangeController.add(null);
     };

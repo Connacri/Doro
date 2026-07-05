@@ -1,5 +1,6 @@
 import 'transaction_model.dart';
 import 'finality_engine.dart';
+import 'ledger_balances.dart';
 import '../wallet/genesis.dart';
 
 enum DagAcceptResult {
@@ -8,6 +9,8 @@ enum DagAcceptResult {
   rejectedTampered,
   rejectedUnknownParents,
   rejectedReplay,
+  rejectedInsufficientBalance,
+  rejectedDuplicateGenesis,
 }
 
 class DagEngine {
@@ -16,6 +19,19 @@ class DagEngine {
   final Map<String, Set<String>> _confirmedBy = {};
   final Map<String, Set<String>> _pendingConfirmations = {};
   final FinalityEngine finality;
+
+  /// Solde faisant AUTORITÉ pour tout le réseau — voir LedgerBalances.
+  /// C'est ce qui empêche une transaction de dépenser un montant que
+  /// son émetteur ne possède pas réellement, quelle que soit la
+  /// signature (valide) qui l'accompagne.
+  final LedgerBalances balances = LedgerBalances();
+
+  /// `true` dès qu'une transaction de mint (genesis) a été acceptée une
+  /// fois. Empêche quiconque de rediffuser une "fausse genesis" (nouvel
+  /// id, sa propre clé) pour re-créditer indéfiniment l'allocation de
+  /// départ — la vérification de nonce normale est sautée pour les
+  /// adresses de mint, donc ce garde-fou est nécessaire séparément.
+  bool _genesisMinted = false;
 
   DagEngine({int requiredConfirmations = 2})
       : finality = FinalityEngine(requiredConfirmations: requiredConfirmations);
@@ -47,17 +63,36 @@ class DagEngine {
        return DagAcceptResult.rejectedUnknownParents;
     }
 
-    if (!Genesis.isMintAddress(tx.from)) {
+    if (Genesis.isMintAddress(tx.from)) {
+      // Une seule allocation genesis, jamais deux — sinon n'importe qui
+      // pourrait rediffuser un mint signé de sa propre clé pour
+      // re-créditer `Genesis.genesisAddress` à l'infini.
+      if (_genesisMinted) {
+        return DagAcceptResult.rejectedDuplicateGenesis;
+      }
+    } else {
       final last = _lastNonce[tx.from];
       if (last != null && tx.nonce <= last) {
         return DagAcceptResult.rejectedReplay;
       }
+
+      // Vérification de solde FAISANT AUTORITÉ : personne ne peut
+      // dépenser plus que ce que le DAG lui reconnaît, quelle que soit
+      // la validité de sa signature. C'est cette ligne qui rend une
+      // transaction falsifiée (montant inventé) rejetée par tout le
+      // réseau, et pas seulement par l'appareil de l'émetteur.
+      if (!balances.canSpend(tx.from, tx.amount)) {
+        return DagAcceptResult.rejectedInsufficientBalance;
+      }
     }
 
     ledger[tx.id] = tx;
-    if (!Genesis.isMintAddress(tx.from)) {
+    if (Genesis.isMintAddress(tx.from)) {
+      _genesisMinted = true;
+    } else {
       _lastNonce[tx.from] = tx.nonce;
     }
+    balances.apply(tx.from, tx.to, tx.amount);
     onCommit?.call(tx);
 
     final pending = _pendingConfirmations.remove(tx.id);
@@ -98,6 +133,13 @@ class DagEngine {
   bool isFinal(String txId) => finality.isFinal(txId);
   int confirmationsOf(String txId) => finality.confirmationsOf(txId);
   int confirmersCountOf(String txId) => _confirmedBy[txId]?.length ?? 0;
+
+  /// Dernier nonce accepté pour cette adresse, ou 0 si aucune tx encore.
+  /// Source d'autorité pour calculer le PROCHAIN nonce à utiliser — ne
+  /// jamais se fier à un compteur local (ex: `Wallet.nonce`) qui n'est
+  /// pas persisté après un redémarrage de l'app, sous peine de rejouer
+  /// un nonce déjà utilisé et de se faire rejeter par `rejectedReplay`.
+  int lastNonceOf(String address) => _lastNonce[address] ?? 0;
 
   DagAcceptResult restoreFinalized(Transaction tx) {
     final result = addValidated(tx);

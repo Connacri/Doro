@@ -82,11 +82,19 @@ class WebRTCNetworkEngine {
     await conn.addIceCandidate(candidate);
   }
 
-  void sendToPeer(String peerId, Map<String, dynamic> data) {
+  /// Retourne `true` si le message a réellement été envoyé sur le canal
+  /// WebRTC de ce pair, `false` sinon (pair inconnu ou canal pas encore
+  /// ouvert). Ne JAMAIS ignorer cette valeur côté appelant — un `false`
+  /// veut dire que le message est perdu si personne ne le renvoie.
+  bool sendToPeer(String peerId, Map<String, dynamic> data) {
     final conn = _connections[peerId];
-    if (conn == null) return;
-    conn.send(jsonEncode(data));
+    if (conn == null) return false;
+    return conn.send(jsonEncode(data));
   }
+
+  /// Le canal de données vers ce pair est-il actuellement ouvert et prêt
+  /// à transmettre (par opposition à "en cours de négociation ICE").
+  bool isPeerChannelOpen(String peerId) => _connections[peerId]?.isOpen ?? false;
 
   void broadcast(Map<String, dynamic> data) {
     final encoded = jsonEncode(data);

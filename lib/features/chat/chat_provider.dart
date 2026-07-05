@@ -91,7 +91,8 @@ class ChatProvider extends ChangeNotifier {
     try {
       node.sendChat(peerId, text);
     } catch (_) {
-      // Échec P2P silencieux — le message est déjà affiché localement
+      // Ne devrait plus arriver : MessengerKernel met le message en
+      // file d'attente au lieu de le perdre si le pair est hors ligne.
     }
   }
 

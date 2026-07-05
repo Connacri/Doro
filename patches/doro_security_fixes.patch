@@ -1,0 +1,381 @@
+diff --git a/lib/core/dag/dag_engine.dart b/lib/core/dag/dag_engine.dart
+index 0f55139..7434ad5 100644
+--- a/lib/core/dag/dag_engine.dart
++++ b/lib/core/dag/dag_engine.dart
+@@ -1,5 +1,6 @@
+ import 'transaction_model.dart';
+ import 'finality_engine.dart';
++import 'ledger_balances.dart';
+ import '../wallet/genesis.dart';
+ 
+ enum DagAcceptResult {
+@@ -8,6 +9,8 @@ enum DagAcceptResult {
+   rejectedTampered,
+   rejectedUnknownParents,
+   rejectedReplay,
++  rejectedInsufficientBalance,
++  rejectedDuplicateGenesis,
+ }
+ 
+ class DagEngine {
+@@ -17,6 +20,19 @@ class DagEngine {
+   final Map<String, Set<String>> _pendingConfirmations = {};
+   final FinalityEngine finality;
+ 
++  /// Solde faisant AUTORITÉ pour tout le réseau — voir LedgerBalances.
++  /// C'est ce qui empêche une transaction de dépenser un montant que
++  /// son émetteur ne possède pas réellement, quelle que soit la
++  /// signature (valide) qui l'accompagne.
++  final LedgerBalances balances = LedgerBalances();
++
++  /// `true` dès qu'une transaction de mint (genesis) a été acceptée une
++  /// fois. Empêche quiconque de rediffuser une "fausse genesis" (nouvel
++  /// id, sa propre clé) pour re-créditer indéfiniment l'allocation de
++  /// départ — la vérification de nonce normale est sautée pour les
++  /// adresses de mint, donc ce garde-fou est nécessaire séparément.
++  bool _genesisMinted = false;
++
+   DagEngine({int requiredConfirmations = 2})
+       : finality = FinalityEngine(requiredConfirmations: requiredConfirmations);
+ 
+@@ -47,17 +63,36 @@ class DagEngine {
+        return DagAcceptResult.rejectedUnknownParents;
+     }
+ 
+-    if (!Genesis.isMintAddress(tx.from)) {
++    if (Genesis.isMintAddress(tx.from)) {
++      // Une seule allocation genesis, jamais deux — sinon n'importe qui
++      // pourrait rediffuser un mint signé de sa propre clé pour
++      // re-créditer `Genesis.genesisAddress` à l'infini.
++      if (_genesisMinted) {
++        return DagAcceptResult.rejectedDuplicateGenesis;
++      }
++    } else {
+       final last = _lastNonce[tx.from];
+       if (last != null && tx.nonce <= last) {
+         return DagAcceptResult.rejectedReplay;
+       }
++
++      // Vérification de solde FAISANT AUTORITÉ : personne ne peut
++      // dépenser plus que ce que le DAG lui reconnaît, quelle que soit
++      // la validité de sa signature. C'est cette ligne qui rend une
++      // transaction falsifiée (montant inventé) rejetée par tout le
++      // réseau, et pas seulement par l'appareil de l'émetteur.
++      if (!balances.canSpend(tx.from, tx.amount)) {
++        return DagAcceptResult.rejectedInsufficientBalance;
++      }
+     }
+ 
+     ledger[tx.id] = tx;
+-    if (!Genesis.isMintAddress(tx.from)) {
++    if (Genesis.isMintAddress(tx.from)) {
++      _genesisMinted = true;
++    } else {
+       _lastNonce[tx.from] = tx.nonce;
+     }
++    balances.apply(tx.from, tx.to, tx.amount);
+     onCommit?.call(tx);
+ 
+     final pending = _pendingConfirmations.remove(tx.id);
+@@ -99,6 +134,13 @@ class DagEngine {
+   int confirmationsOf(String txId) => finality.confirmationsOf(txId);
+   int confirmersCountOf(String txId) => _confirmedBy[txId]?.length ?? 0;
+ 
++  /// Dernier nonce accepté pour cette adresse, ou 0 si aucune tx encore.
++  /// Source d'autorité pour calculer le PROCHAIN nonce à utiliser — ne
++  /// jamais se fier à un compteur local (ex: `Wallet.nonce`) qui n'est
++  /// pas persisté après un redémarrage de l'app, sous peine de rejouer
++  /// un nonce déjà utilisé et de se faire rejeter par `rejectedReplay`.
++  int lastNonceOf(String address) => _lastNonce[address] ?? 0;
++
+   DagAcceptResult restoreFinalized(Transaction tx) {
+     final result = addValidated(tx);
+     if (result == DagAcceptResult.accepted) {
+diff --git a/lib/core/dag/double_spend_checker.dart b/lib/core/dag/double_spend_checker.dart
+index c26bcca..968d33f 100644
+--- a/lib/core/dag/double_spend_checker.dart
++++ b/lib/core/dag/double_spend_checker.dart
+@@ -1,18 +1,26 @@
++/// ⚠️ Historique : cette classe n'est actuellement appelée par aucun code
++/// (voir DagEngine, qui gère désormais le rejeu ET le solde de manière
++/// centralisée via `_lastNonce` + `LedgerBalances`). Elle contenait un bug
++/// bloquant : `isSpent(sender)`/`markSpent(sender)` étaient indexées par
++/// expéditeur SEUL, donc la toute première transaction d'un expéditeur
++/// aurait marqué son adresse comme "dépensée" pour toujours — bloquant
++/// tout envoi ultérieur, même légitime. Corrigé ici (clé sender+nonce)
++/// au cas où cette classe serait réutilisée plus tard.
+ class DoubleSpendChecker {
+-  final Set<String> spent = {};
++  final Set<String> _spentKeys = {};
+ 
+-  bool isSpent(String sender) {
+-    return spent.contains(sender);
++  bool isSpent(String sender, int nonce) {
++    return _spentKeys.contains('$sender:$nonce');
+   }
+ 
+-  void markSpent(String sender) {
+-    spent.add(sender);
++  void markSpent(String sender, int nonce) {
++    _spentKeys.add('$sender:$nonce');
+   }
+ 
+-  bool validate(String sender) {
+-    if (isSpent(sender)) return false;
++  bool validate(String sender, int nonce) {
++    if (isSpent(sender, nonce)) return false;
+ 
+-    markSpent(sender);
++    markSpent(sender, nonce);
+     return true;
+   }
+ }
+\ No newline at end of file
+diff --git a/lib/core/dag/ledger_balances.dart b/lib/core/dag/ledger_balances.dart
+new file mode 100644
+index 0000000..3998aaf
+--- /dev/null
++++ b/lib/core/dag/ledger_balances.dart
+@@ -0,0 +1,51 @@
++import '../wallet/genesis.dart';
++
++/// Solde AUTORITAIRE de chaque adresse, calculé UNIQUEMENT à partir des
++/// transactions acceptées dans le DAG — jamais depuis une valeur locale
++/// non vérifiée côté client (voir WalletCore, qui lui n'est qu'un cache
++/// UI pour les wallets possédés par CET appareil).
++///
++/// Point clé : `DagEngine` appelle ce ledger pour CHAQUE transaction,
++/// qu'elle vienne de moi, du réseau, ou d'une resynchronisation. Comme
++/// tout pair honnête applique exactement la même règle dans le même
++/// ordre d'acceptation, tous les nœuds convergent vers le même état.
++/// Une transaction qui prétend dépenser plus que le solde connu de son
++/// émetteur est donc rejetée par TOUT le réseau, pas seulement par
++/// l'expéditeur — c'est ce qui rend la dépense falsifiée impossible,
++/// même si elle est parfaitement signée.
++class LedgerBalances {
++  final Map<String, BigInt> _balances = {};
++
++  BigInt balanceOf(String address) => _balances[address] ?? BigInt.zero;
++
++  /// Vérifie qu'une dépense de `amount` par `address` est possible, SANS
++  /// l'appliquer. Les adresses de mint (genesis) sont exemptées : elles
++  /// ne débitent jamais un solde réel, elles créent l'allocation initiale
++  /// (protégée séparément contre le rejeu — voir DagEngine).
++  bool canSpend(String address, BigInt amount) {
++    if (Genesis.isMintAddress(address)) return true;
++    return balanceOf(address) >= amount;
++  }
++
++  /// Applique le mouvement : débite l'expéditeur (sauf mint), crédite le
++  /// destinataire. À appeler UNE SEULE FOIS par transaction, uniquement
++  /// après validation complète (structure + signature + solde + nonce).
++  void apply(String from, String to, BigInt amount) {
++    if (!Genesis.isMintAddress(from)) {
++      _balances[from] = balanceOf(from) - amount;
++    }
++    _balances[to] = balanceOf(to) + amount;
++  }
++
++  /// Restaure un état de solde déjà calculé (ex: après relecture du
++  /// stockage local) sans repasser par `apply`.
++  void restore(Map<String, BigInt> snapshot) {
++    _balances
++      ..clear()
++      ..addAll(snapshot);
++  }
++
++  Map<String, BigInt> snapshot() => Map.unmodifiable(_balances);
++
++  void clear() => _balances.clear();
++}
+diff --git a/lib/core/kernels/messenger/messenger_kernel.dart b/lib/core/kernels/messenger/messenger_kernel.dart
+index 2b02f07..fb0ee9e 100644
+--- a/lib/core/kernels/messenger/messenger_kernel.dart
++++ b/lib/core/kernels/messenger/messenger_kernel.dart
+@@ -18,6 +18,15 @@ class MessengerKernel {
+ 
+   final Set<String> _seenChatMessages = {};
+ 
++  /// File d'attente des messages qui n'ont PAS pu être transmis
++  /// immédiatement (pair hors ligne ou canal WebRTC encore en
++  /// négociation). Sans cette file, `WebRTCNetworkEngine.sendToPeer`
++  /// abandonnait silencieusement le message — l'UI l'affichait comme
++  /// "envoyé" alors qu'il n'avait jamais quitté l'appareil. Chaque
++  /// entrée est renvoyée automatiquement dès que le canal vers ce pair
++  /// s'ouvre (voir `onPeerChannelOpen`, appelé par P2PNode).
++  final Map<String, List<Map<String, dynamic>>> _outbox = {};
++
+   MessengerKernel({required this.nodeId, required this.p2p, required this.db}) {
+     _msgBox = db.getBox<ChatMessageEntity>();
+     _contactBox = db.getBox<ContactEntity>();
+@@ -90,7 +99,7 @@ class MessengerKernel {
+       "to": toPeerId,
+       "time": DateTime.now().toIso8601String(),
+     };
+-    p2p.sendToPeer(toPeerId, data);
++    _sendOrQueue(toPeerId, data);
+   }
+ 
+   void sendPrivateChat(String toPeerId, String text) {
+@@ -99,9 +108,41 @@ class MessengerKernel {
+ 
+     _seenChatMessages.add("$nodeId:$time:${text.hashCode}");
+     _msgBox.put(ChatMessageEntity(fromId: nodeId, text: text, timestamp: time, peerKey: toPeerId));
+-    p2p.sendToPeer(toPeerId, data);
++    _sendOrQueue(toPeerId, data);
+   }
+ 
++  /// Tente l'envoi immédiat ; si le canal n'est pas prêt (pair hors
++  /// ligne ou négociation WebRTC en cours), met en file d'attente pour
++  /// renvoi automatique dès la reconnexion — le message n'est JAMAIS
++  /// perdu silencieusement tant que le pair finit par revenir en ligne.
++  void _sendOrQueue(String toPeerId, Map<String, dynamic> data) {
++    final delivered = p2p.sendToPeer(toPeerId, data);
++    if (!delivered) {
++      _outbox.putIfAbsent(toPeerId, () => []).add(data);
++    }
++  }
++
++  /// À appeler par P2PNode dès que le canal WebRTC vers `peerId` s'ouvre
++  /// (offre acceptée, connexion établie). Renvoie dans l'ordre tout ce
++  /// qui attendait ce pair précisément.
++  void onPeerChannelOpen(String peerId) {
++    final pending = _outbox.remove(peerId);
++    if (pending == null || pending.isEmpty) return;
++
++    for (final data in pending) {
++      final delivered = p2p.sendToPeer(peerId, data);
++      if (!delivered) {
++        // Le canal s'est refermé entre-temps : on remet en file pour la
++        // prochaine ouverture au lieu de perdre le message.
++        _outbox.putIfAbsent(peerId, () => []).add(data);
++      }
++    }
++  }
++
++  /// Nombre de messages en attente de renvoi pour ce pair (utile pour
++  /// afficher un indicateur "en attente" côté UI si besoin).
++  int pendingCountFor(String peerId) => _outbox[peerId]?.length ?? 0;
++
+   List<Map<String, dynamic>> historyWith(String peerKey) {
+     return (_msgBox.query(ChatMessageEntity_.peerKey.equals(peerKey)).build().find()
+           ..sort((a, b) => a.timestamp.compareTo(b.timestamp)))
+diff --git a/lib/core/p2p/p2p_node.dart b/lib/core/p2p/p2p_node.dart
+index 9115999..5746b3c 100644
+--- a/lib/core/p2p/p2p_node.dart
++++ b/lib/core/p2p/p2p_node.dart
+@@ -49,6 +49,10 @@ class P2PNode {
+     health = NetworkHealth();
+ 
+     p2p.onChannelOpen = (peerId) {
++      // Le canal vient de s'ouvrir : tout message de chat/invitation qui
++      // attendait ce pair précisément peut maintenant partir pour de
++      // vrai (voir MessengerKernel._outbox).
++      messengerKernel.onPeerChannelOpen(peerId);
+       _channelReadyController.add(peerId);
+       _networkChangeController.add(null);
+     };
+diff --git a/lib/core/p2p/peer_connection.dart b/lib/core/p2p/peer_connection.dart
+index 0fa46ed..6d93195 100644
+--- a/lib/core/p2p/peer_connection.dart
++++ b/lib/core/p2p/peer_connection.dart
+@@ -106,9 +106,16 @@ class PeerConnection {
+     return channel;
+   }
+ 
+-  void send(String message) {
+-    if (!_isOpen) return;
++  /// Retourne `true` si le message a effectivement été transmis au canal
++  /// WebRTC, `false` s'il a été silencieusement abandonné (canal pas
++  /// encore ouvert, ex: négociation ICE en cours ou pair déconnecté).
++  /// L'appelant DOIT vérifier cette valeur : un `false` signifie que le
++  /// message n'a jamais quitté l'appareil et doit être mis en file
++  /// d'attente pour un renvoi ultérieur (voir MessengerKernel.outbox).
++  bool send(String message) {
++    if (!_isOpen) return false;
+     _channel?.send(RTCDataChannelMessage(message));
++    return true;
+   }
+ 
+   Future<void> close() async {
+diff --git a/lib/core/p2p/webrtc_engine.dart b/lib/core/p2p/webrtc_engine.dart
+index a505100..4e69eca 100644
+--- a/lib/core/p2p/webrtc_engine.dart
++++ b/lib/core/p2p/webrtc_engine.dart
+@@ -82,12 +82,20 @@ class WebRTCNetworkEngine {
+     await conn.addIceCandidate(candidate);
+   }
+ 
+-  void sendToPeer(String peerId, Map<String, dynamic> data) {
++  /// Retourne `true` si le message a réellement été envoyé sur le canal
++  /// WebRTC de ce pair, `false` sinon (pair inconnu ou canal pas encore
++  /// ouvert). Ne JAMAIS ignorer cette valeur côté appelant — un `false`
++  /// veut dire que le message est perdu si personne ne le renvoie.
++  bool sendToPeer(String peerId, Map<String, dynamic> data) {
+     final conn = _connections[peerId];
+-    if (conn == null) return;
+-    conn.send(jsonEncode(data));
++    if (conn == null) return false;
++    return conn.send(jsonEncode(data));
+   }
+ 
++  /// Le canal de données vers ce pair est-il actuellement ouvert et prêt
++  /// à transmettre (par opposition à "en cours de négociation ICE").
++  bool isPeerChannelOpen(String peerId) => _connections[peerId]?.isOpen ?? false;
++
+   void broadcast(Map<String, dynamic> data) {
+     final encoded = jsonEncode(data);
+     for (final conn in _connections.values) {
+diff --git a/lib/core/storage/repositories/tx_repository.dart b/lib/core/storage/repositories/tx_repository.dart
+index 0e22330..4f73856 100644
+--- a/lib/core/storage/repositories/tx_repository.dart
++++ b/lib/core/storage/repositories/tx_repository.dart
+@@ -21,7 +21,11 @@ class TxRepository {
+       signature: e.signature,
+       nonce: e.nonce,
+       senderPublicKey: e.senderPublicKey,
+-      parents: e.parents.split(','),
++      // "".split(',') retourne [''] et non [] — sans ce garde-fou, toute
++      // transaction sans parents (ex: la genesis) est rechargée avec un
++      // faux parent "" et se fait rejeter comme "parents inconnus" par
++      // DagEngine au redémarrage de l'app, la faisant disparaître du DAG.
++      parents: e.parents.isEmpty ? const <String>[] : e.parents.split(','),
+     )).toList();
+   }
+ 
+diff --git a/lib/features/chat/chat_provider.dart b/lib/features/chat/chat_provider.dart
+index a368a22..7c4e0b3 100644
+--- a/lib/features/chat/chat_provider.dart
++++ b/lib/features/chat/chat_provider.dart
+@@ -91,7 +91,8 @@ class ChatProvider extends ChangeNotifier {
+     try {
+       node.sendChat(peerId, text);
+     } catch (_) {
+-      // Échec P2P silencieux — le message est déjà affiché localement
++      // Ne devrait plus arriver : MessengerKernel met le message en
++      // file d'attente au lieu de le perdre si le pair est hors ligne.
+     }
+   }
+ 
+diff --git a/lib/features/wallet/wallet_provider.dart b/lib/features/wallet/wallet_provider.dart
+index 7fb5641..8446bd8 100644
+--- a/lib/features/wallet/wallet_provider.dart
++++ b/lib/features/wallet/wallet_provider.dart
+@@ -202,7 +202,16 @@ class WalletProvider extends ChangeNotifier {
+     final ok = core.transfer(from, to, amount);
+     if (!ok) return false;
+ 
+-    final nonce = senderWallet.nextNonce();
++    // Le DAG (persisté via l'historique des tx) fait autorité sur le
++    // dernier nonce réellement utilisé — le compteur local `Wallet.nonce`
++    // repart de 0 après un redémarrage de l'app (non persisté), donc s'y
++    // fier seul provoquerait un rejet "replay" au premier envoi suivant
++    // un redémarrage.
++    final lastKnownNonce = node != null
++        ? node!.dag.lastNonceOf(from)
++        : senderWallet.nonce;
++    final nonce = (lastKnownNonce > senderWallet.nonce ? lastKnownNonce : senderWallet.nonce) + 1;
++    senderWallet.nonce = nonce;
+     final parentTips = node?.dag.tips() ?? const <String>[];
+ 
+     final unsigned = Transaction(

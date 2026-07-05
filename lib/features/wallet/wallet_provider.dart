@@ -202,7 +202,16 @@ class WalletProvider extends ChangeNotifier {
     final ok = core.transfer(from, to, amount);
     if (!ok) return false;
 
-    final nonce = senderWallet.nextNonce();
+    // Le DAG (persisté via l'historique des tx) fait autorité sur le
+    // dernier nonce réellement utilisé — le compteur local `Wallet.nonce`
+    // repart de 0 après un redémarrage de l'app (non persisté), donc s'y
+    // fier seul provoquerait un rejet "replay" au premier envoi suivant
+    // un redémarrage.
+    final lastKnownNonce = node != null
+        ? node!.dag.lastNonceOf(from)
+        : senderWallet.nonce;
+    final nonce = (lastKnownNonce > senderWallet.nonce ? lastKnownNonce : senderWallet.nonce) + 1;
+    senderWallet.nonce = nonce;
     final parentTips = node?.dag.tips() ?? const <String>[];
 
     final unsigned = Transaction(
