@@ -79,14 +79,14 @@ class _DoroAppState extends State<DoroApp> {
         ChangeNotifierProvider(create: (_) => WalletProvider(node.wallet, _walletRepo, node: node)),
         ChangeNotifierProxyProvider<WalletProvider, ChatProvider>(
           create: (_) => ChatProvider(node, _contactRepo),
-          update: (_, wallet, chat) => ChatProvider(node, _contactRepo, walletProvider: wallet),
+          update: (_, wallet, chat) => chat!..walletProvider = wallet,
         ),
         ChangeNotifierProvider(create: (_) => LedgerProvider(node)),
         ChangeNotifierProvider(create: (_) => NetworkProvider(node)),
 
 ChangeNotifierProxyProvider<WalletProvider, MarketProvider>(
   create: (_) => MarketProvider(node),
-  update: (_, wallet, market) => MarketProvider(node, walletProvider: wallet),
+  update: (_, wallet, market) => market!..walletProvider = wallet,
 ),
       ],
       child: MaterialApp(

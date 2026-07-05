@@ -8,7 +8,7 @@ import '../wallet/wallet_provider.dart';
 class ChatProvider extends ChangeNotifier {
   final P2PNode node;
   final ContactRepository contactRepo;
-  final WalletProvider? walletProvider;
+  WalletProvider? walletProvider;
 
   final Map<String, List<Map<String, dynamic>>> _conversations = {};
   StreamSubscription<Map<String, dynamic>>? _sub;

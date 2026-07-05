@@ -22,6 +22,7 @@ class WalletProvider extends ChangeNotifier {
   final P2PNode? node;
   final CryptoService _crypto = CryptoService();
   StreamSubscription<void>? _walletSub;
+  bool _initialized = false;
 /// Seed à faire sauvegarder à l'utilisateur juste après une création
   /// automatique (1er lancement). Tant que ce n'est pas acquitté via
   /// clearPendingBackup(), l'UI DOIT bloquer avec le dialogue de backup.
@@ -38,12 +39,18 @@ class WalletProvider extends ChangeNotifier {
   }
 
   Future<void> _init() async {
-    await repo.load();
-    _restoreFromRepo();
+    if (_initialized) return;
+    _initialized = true;
+    try {
+      await repo.load();
+      _restoreFromRepo();
 
-    if (core.all().isEmpty) {
-      final result = await createWallet();
-      pendingBackupSeed = result.seedHex;
+      if (core.all().isEmpty) {
+        final result = await createWallet();
+        pendingBackupSeed = result.seedHex;
+      }
+    } catch (e) {
+      Logger.error("Erreur init wallet: $e");
     }
 
     notifyListeners();

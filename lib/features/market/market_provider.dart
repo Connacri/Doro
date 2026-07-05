@@ -8,7 +8,7 @@ import '../wallet/wallet_provider.dart';
 
 class MarketProvider extends ChangeNotifier {
   final P2PNode node;
-  final WalletProvider? walletProvider;
+  WalletProvider? walletProvider;
   String? lastError;
 
   MarketProvider(this.node, {this.walletProvider}) {

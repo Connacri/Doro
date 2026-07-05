@@ -41,28 +41,35 @@ class _SendScreenState extends State<SendScreen> {
     if (wallets.isEmpty) return;
 
     setState(() => _sending = true);
-    final ok = await provider.send(
-      from: wallets.first.address,
-      to: to,
-      amount: amount,
-    );
-    if (!mounted) return;
-    setState(() => _sending = false);
-
-    if (ok) {
-      toCtrl.clear();
-      amountCtrl.clear();
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text("Transaction envoyée — en attente de confirmation par le réseau"),
-        ),
+    try {
+      final ok = await provider.send(
+        from: wallets.first.address,
+        to: to,
+        amount: amount,
       );
-    } else {
+      if (!mounted) return;
+      if (ok) {
+        toCtrl.clear();
+        amountCtrl.clear();
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text("Transaction envoyée — en attente de confirmation par le réseau"),
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text("Échec de l'envoi (solde insuffisant ou clé introuvable)"),
+          ),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text("Échec de l'envoi (solde insuffisant ou clé introuvable)"),
-        ),
+        SnackBar(content: Text("Erreur : $e")),
       );
+    } finally {
+      if (mounted) setState(() => _sending = false);
     }
   }
 
