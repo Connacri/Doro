@@ -6,6 +6,7 @@ import '../../core/market/trade_model.dart';
 import '../market/market_provider.dart';
 import '../wallet/wallet_provider.dart';
 import '../wallet/wallet_screen.dart' show formatDoro;
+import '../../shared/extensions/string_ext.dart';
 
 String _fmtPrice(BigInt cents) => "\$${(cents.toDouble() / 100).toStringAsFixed(2)}";
 String _shortId(String id) => id.length > 14 ? "${id.substring(0, 8)}…${id.substring(id.length - 4)}" : id;
@@ -48,11 +49,19 @@ class HomeScreen extends StatelessWidget {
                 final amountStr = amountCtrl.text.trim();
                 final priceStr = priceCtrl.text.trim();
                 if (amountStr.isEmpty || priceStr.isEmpty) return;
-                final amount = BigInt.from(double.parse(amountStr) * 1e18);
-                final price = BigInt.from((double.parse(priceStr) * 100).round());
-                final market = context.read<MarketProvider>();
                 final navigator = Navigator.of(ctx);
                 final scaffoldMessenger = ScaffoldMessenger.of(context);
+                final parsedAmount = amountStr.toLocaleDouble();
+                final parsedPrice = priceStr.toLocaleDouble();
+                if (parsedAmount == null || parsedAmount <= 0 || parsedPrice == null || parsedPrice <= 0) {
+                  scaffoldMessenger.showSnackBar(
+                    const SnackBar(content: Text("Quantité ou prix invalide")),
+                  );
+                  return;
+                }
+                final amount = BigInt.from(parsedAmount * 1e18);
+                final price = BigInt.from((parsedPrice * 100).round());
+                final market = context.read<MarketProvider>();
                 final order = await market.publishOrder(side: side, amount: amount, pricePerUnit: price);
                 navigator.pop();
                 scaffoldMessenger.showSnackBar(SnackBar(

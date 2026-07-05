@@ -199,6 +199,16 @@ class WalletKernel {
     });
   }
 
+  /// Demande à `peerId` de nous envoyer tout son historique de
+  /// transactions connu. À appeler dès qu'une connexion s'établit avec
+  /// un pair — sans ça, un nœud qui vient de rejoindre le réseau ne
+  /// connaît QUE les transactions diffusées après sa connexion, et peut
+  /// à tort rejeter un paiement légitime d'un pair dont il n'a pas encore
+  /// vu l'historique (solde local incomplet).
+  void requestSync(String peerId) {
+    p2p.sendToPeer(peerId, {"type": "sync_request", "from": identity.nodeId});
+  }
+
   Future<void> _handleSyncResponse(Map<String, dynamic> data) async {
     final txs = data["txs"] as List?;
     if (txs == null) return;

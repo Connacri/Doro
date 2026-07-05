@@ -98,12 +98,12 @@ class ChatProvider extends ChangeNotifier {
 
   Future<bool> sendCrypto(String toAddress, BigInt amount) async {
     if (walletProvider == null || walletProvider!.wallets.isEmpty) return false;
-    final ok = await walletProvider!.send(
+    final txId = await walletProvider!.send(
       from: walletProvider!.wallets.first.address,
       to: toAddress,
       amount: amount,
     );
-    if (ok) {
+    if (txId != null) {
       messagesWith(toAddress).add({
         "type": "tx_info",
         "from": node.nodeId,
@@ -112,7 +112,7 @@ class ChatProvider extends ChangeNotifier {
       });
       notifyListeners();
     }
-    return ok;
+    return txId != null;
   }
 
   void clearHistory(String peerId) {

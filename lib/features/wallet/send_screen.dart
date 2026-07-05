@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'wallet_provider.dart';
 import '../../core/wallet/token_config.dart';
+import '../../shared/extensions/string_ext.dart';
 
 class SendScreen extends StatefulWidget {
   const SendScreen({super.key});
@@ -27,7 +28,7 @@ class _SendScreenState extends State<SendScreen> {
     final amountStr = amountCtrl.text.trim();
     if (to.isEmpty || amountStr.isEmpty) return;
 
-    final humanAmount = double.tryParse(amountStr);
+    final humanAmount = amountStr.toLocaleDouble();
     if (humanAmount == null || humanAmount <= 0) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text("Montant invalide")),
@@ -42,13 +43,13 @@ class _SendScreenState extends State<SendScreen> {
 
     setState(() => _sending = true);
     try {
-      final ok = await provider.send(
+      final txId = await provider.send(
         from: wallets.first.address,
         to: to,
         amount: amount,
       );
       if (!mounted) return;
-      if (ok) {
+      if (txId != null) {
         toCtrl.clear();
         amountCtrl.clear();
         ScaffoldMessenger.of(context).showSnackBar(

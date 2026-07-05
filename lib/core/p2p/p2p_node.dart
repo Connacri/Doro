@@ -53,6 +53,10 @@ class P2PNode {
       // attendait ce pair précisément peut maintenant partir pour de
       // vrai (voir MessengerKernel._outbox).
       messengerKernel.onPeerChannelOpen(peerId);
+      // Récupère l'historique de transactions de ce pair — sans ça, mon
+      // solde local le concernant reste incomplet (voir WalletKernel.
+      // requestSync) et je peux rejeter à tort un paiement légitime.
+      walletKernel.requestSync(peerId);
       _channelReadyController.add(peerId);
       _networkChangeController.add(null);
     };
@@ -78,7 +82,7 @@ class P2PNode {
     );
     orderRepo = OrderRepository(db);
     tradeRepo = TradeRepository(db);
-    marketKernel = MarketKernel(identity: identity, p2p: p2p, orderRepo: orderRepo, tradeRepo: tradeRepo);
+    marketKernel = MarketKernel(identity: identity, p2p: p2p, orderRepo: orderRepo, tradeRepo: tradeRepo, dag: dag);
   }
 
   Stream<Map<String, dynamic>> get messages => messengerKernel.messages;

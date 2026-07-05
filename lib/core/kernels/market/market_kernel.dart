@@ -3,6 +3,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:cryptography/cryptography.dart';
 import '../../crypto/signature.dart';
+import '../../dag/dag_engine.dart';
 import '../../market/order_model.dart';
 import '../../market/trade_model.dart';
 import '../../p2p/webrtc_engine.dart';
@@ -18,6 +19,13 @@ class MarketKernel {
   final WebRTCNetworkEngine p2p;
   final OrderRepository orderRepo;
   final TradeRepository tradeRepo;
+
+  /// Nécessaire pour vérifier qu'un `trade_accept` correspond à un VRAI
+  /// paiement DORO déjà finalisé — sans ça, n'importe quel pair pouvait
+  /// prétendre avoir payé (txId inventé) et se faire créditer un ordre
+  /// "filled" sans jamais avoir transféré le moindre token.
+  final DagEngine dag;
+
   final CryptoService _crypto = CryptoService();
 
   final Set<String> _seenOrders = {};
@@ -29,7 +37,13 @@ class MarketKernel {
   final _tradeUpdates = StreamController<void>.broadcast();
   Stream<void> get tradeUpdates => _tradeUpdates.stream;
 
-  MarketKernel({required this.identity, required this.p2p, required this.orderRepo, required this.tradeRepo}) {
+  MarketKernel({
+    required this.identity,
+    required this.p2p,
+    required this.orderRepo,
+    required this.tradeRepo,
+    required this.dag,
+  }) {
     p2p.messages.listen((msg) {
       final data = msg.data;
       if (data is! Map<String, dynamic>) return;
@@ -159,30 +173,109 @@ class MarketKernel {
 
   /// À appeler UNIQUEMENT après un vrai transfert DORO on-chain déjà
   /// effectué (voir MarketProvider.confirmSale) — txId en est la preuve.
-  void acceptTrade(Trade trade, String txId) {
+  /// Le message envoyé est signé : le récepteur vérifie cette signature
+  /// ET que `txId` correspond réellement à un paiement finalisé sur le
+  /// DAG avant d'accepter la confirmation (voir `_handleTradeEvent`).
+  Future<void> acceptTrade(Trade trade, String txId) async {
     final confirmed = trade.copyWith(status: TradeStatus.confirmed, txId: txId);
     tradeRepo.save(confirmed);
     orderRepo.markFilled(trade.orderId);
     final counterpart = confirmed.sellerId == identity.nodeId ? confirmed.buyerId : confirmed.sellerId;
-    p2p.sendToPeer(counterpart, {"type": "trade_accept", ...confirmed.toJson()});
+    final payload = await _signedTradeEvent("trade_accept", confirmed);
+    p2p.sendToPeer(counterpart, payload);
     _tradeUpdates.add(null);
     _orderBookChanges.add(null);
   }
 
-  void rejectTrade(Trade trade) {
+  Future<void> rejectTrade(Trade trade) async {
     final rejected = trade.copyWith(status: TradeStatus.rejected);
     tradeRepo.save(rejected);
     final counterpart = rejected.sellerId == identity.nodeId ? rejected.buyerId : rejected.sellerId;
-    p2p.sendToPeer(counterpart, {"type": "trade_reject", ...rejected.toJson()});
+    final payload = await _signedTradeEvent("trade_reject", rejected);
+    p2p.sendToPeer(counterpart, payload);
     _tradeUpdates.add(null);
   }
 
-  void _handleTradeEvent(Map<String, dynamic> data) {
+  Future<Map<String, dynamic>> _signedTradeEvent(String type, Trade trade) async {
+    final message = "${trade.id}:${trade.status.name}:${trade.txId ?? ''}";
+    final sig = await _crypto.sign(utf8.encode(message), keyPair: identity.keyPair);
+    return {
+      "type": type,
+      ...trade.toJson(),
+      "signerPublicKey": identity.publicKeyHex,
+      "signature": _bytesToHex(sig.bytes),
+    };
+  }
+
+  Future<void> _handleTradeEvent(Map<String, dynamic> data) async {
+    late final Trade trade;
     try {
-      tradeRepo.save(Trade.fromJson(data));
-      _tradeUpdates.add(null);
-      _orderBookChanges.add(null);
-    } catch (_) {}
+      trade = Trade.fromJson(data);
+    } catch (_) {
+      return;
+    }
+
+    final signerPublicKey = data["signerPublicKey"] as String?;
+    final signature = data["signature"] as String?;
+    if (signerPublicKey == null || signature == null) {
+      Logger.warn("Événement de trade ${trade.id} rejeté : non signé");
+      return;
+    }
+
+    // Le signataire doit être L'AUTRE partie du trade — pas moi-même,
+    // pas un tiers qui n'a rien à voir avec cette négociation.
+    final signerAddress = AddressGenerator.generate(signerPublicKey);
+    final expectedCounterpart =
+        trade.sellerId == identity.nodeId ? trade.buyerId : trade.sellerId;
+    if (signerAddress != expectedCounterpart) {
+      Logger.warn("Événement de trade ${trade.id} rejeté : signataire ($signerAddress) "
+          "n'est pas la contrepartie attendue ($expectedCounterpart)");
+      return;
+    }
+
+    final message = "${trade.id}:${trade.status.name}:${trade.txId ?? ''}";
+    if (!await _verify(message, signerPublicKey, signature)) {
+      Logger.warn("Événement de trade ${trade.id} rejeté : signature invalide");
+      return;
+    }
+
+    // Preuve de paiement on-chain OBLIGATOIRE avant d'accepter une
+    // confirmation — sans ce contrôle, n'importe qui pouvait envoyer un
+    // txId inventé et se faire créditer un ordre "filled" sans avoir
+    // jamais transféré le moindre DORO.
+    if (trade.status == TradeStatus.confirmed) {
+      final txId = trade.txId;
+      if (txId == null || !_paymentProven(trade, txId)) {
+        Logger.warn("Trade ${trade.id} rejeté : txId '$txId' ne prouve pas le paiement on-chain");
+        return;
+      }
+    }
+
+    // Pas besoin de déduplication ici : `tradeRepo.save()` fait un upsert
+    // par `tradeId`, donc recevoir deux fois le même événement (déjà
+    // vérifié ci-dessus) est inoffensif — la seconde écriture donne le
+    // même état final.
+    tradeRepo.save(trade);
+    _tradeUpdates.add(null);
+    _orderBookChanges.add(null);
+  }
+
+  /// Vérifie que `txId` référence une transaction RÉELLEMENT acceptée
+  /// dans MON PROPRE DAG (donc déjà passée par la validation complète —
+  /// structure, signature, solde, nonce — de `DagEngine.addValidated`),
+  /// correctement dirigée (du vendeur vers l'acheteur) et d'un montant
+  /// suffisant. On n'exige pas ici la finalité multi-pairs complète : sur
+  /// un petit réseau (juste vendeur + acheteur), le nombre de confirmeurs
+  /// distincts nécessaire par défaut (2) ne serait jamais atteignable et
+  /// bloquerait indéfiniment des trades pourtant légitimes. La présence
+  /// dans le ledger local suffit déjà à exclure un txId inventé.
+  bool _paymentProven(Trade trade, String txId) {
+    final tx = dag.ledger[txId];
+    if (tx == null) return false;
+    if (tx.from != trade.sellerId) return false;
+    if (tx.to != trade.buyerId) return false;
+    if (tx.amount < trade.amount) return false;
+    return true;
   }
 
   Future<bool> _verify(String message, String publicKeyHex, String signatureHex) async {

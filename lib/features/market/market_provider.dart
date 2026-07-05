@@ -90,19 +90,19 @@ class MarketProvider extends ChangeNotifier {
       notifyListeners();
       return false;
     }
-    final ok = await walletProvider!.send(from: trade.sellerId, to: trade.buyerId, amount: trade.amount);
-    if (!ok) {
+    final txId = await walletProvider!.send(from: trade.sellerId, to: trade.buyerId, amount: trade.amount);
+    if (txId == null) {
       lastError = "Le transfert DORO a échoué (solde ou clé locale manquante).";
       notifyListeners();
       return false;
     }
-    node.marketKernel.acceptTrade(trade, "tx-${DateTime.now().millisecondsSinceEpoch}");
+    await node.marketKernel.acceptTrade(trade, txId);
     notifyListeners();
     return true;
   }
 
-  void rejectTrade(Trade trade) {
-    node.marketKernel.rejectTrade(trade);
+  Future<void> rejectTrade(Trade trade) async {
+    await node.marketKernel.rejectTrade(trade);
     notifyListeners();
   }
 }

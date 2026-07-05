@@ -1,6 +1,7 @@
 // lib/features/chat/chat_screen.dart
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../../shared/extensions/string_ext.dart';
 import 'chat_provider.dart';
 
 class ChatScreen extends StatefulWidget {
@@ -57,9 +58,16 @@ class _ChatScreenState extends State<ChatScreen> {
             onPressed: () async {
               final amountStr = amountController.text.trim();
               if (amountStr.isEmpty) return;
-              final amount = BigInt.from(double.parse(amountStr) * 1e18);
               final navigator = Navigator.of(ctx);
               final scaffoldMessenger = ScaffoldMessenger.of(context);
+              final parsed = amountStr.toLocaleDouble();
+              if (parsed == null || parsed <= 0) {
+                scaffoldMessenger.showSnackBar(
+                  const SnackBar(content: Text("Montant invalide")),
+                );
+                return;
+              }
+              final amount = BigInt.from(parsed * 1e18);
               final ok = await context.read<ChatProvider>().sendCrypto(widget.peerId, amount);
               navigator.pop();
               scaffoldMessenger.showSnackBar(SnackBar(content: Text(ok ? "Transfert réussi" : "Échec du transfert")));

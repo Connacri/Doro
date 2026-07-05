@@ -185,22 +185,27 @@ class WalletProvider extends ChangeNotifier {
     return wallet;
   }
 
-  Future<bool> send({
+  /// Retourne l'`id` de la transaction réellement diffusée en cas de
+  /// succès, `null` sinon. Le txId réel est nécessaire pour toute preuve
+  /// de paiement on-chain (ex: confirmation de trade OTC) — inventer un
+  /// identifiant à la place (ex: `"tx-" + horodatage`) ne prouve RIEN et
+  /// serait rejeté par la vérification du DAG chez les autres pairs.
+  Future<String?> send({
     required String from,
     required String to,
     required BigInt amount,
   }) async {
     final senderWallet = core.get(from);
-    if (senderWallet == null) return false;
+    if (senderWallet == null) return null;
 
     final keyPair = await KeypairStore.load(from);
     if (keyPair == null) {
       Logger.error("Pas de clé privée locale pour $from — envoi impossible");
-      return false;
+      return null;
     }
 
     final ok = core.transfer(from, to, amount);
-    if (!ok) return false;
+    if (!ok) return null;
 
     // Le DAG (persisté via l'historique des tx) fait autorité sur le
     // dernier nonce réellement utilisé — le compteur local `Wallet.nonce`
@@ -245,12 +250,21 @@ class WalletProvider extends ChangeNotifier {
 
     final result = node?.broadcastTx(signedTx);
     if (result != null && result != DagAcceptResult.accepted) {
+      // Le DAG a réellement rejeté la tx (solde insuffisant, rejeu,
+      // etc.) — la faire quand même passer pour un succès aurait laissé
+      // l'appelant (ex: confirmation de trade OTC) croire qu'un paiement
+      // a eu lieu alors qu'il n'a jamais été accepté par le réseau.
       Logger.error("Ma propre tx ${signedTx.id} n'a pas été acceptée localement : $result");
+      core.creditIfLocal(from, amount); // annule le débit optimiste local
+      senderWallet.nonce -= 1;
+      await repo.syncFromCore(core);
+      notifyListeners();
+      return null;
     }
 
     await repo.syncFromCore(core); // persiste le nouveau solde ET le nonce
     notifyListeners();
-    return true;
+    return signedTx.id;
   }
 
   void load() {
