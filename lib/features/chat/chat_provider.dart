@@ -1,4 +1,3 @@
-// lib/features/chat/chat_provider.dart
 import 'dart:async';
 import 'package:flutter/material.dart';
 import '../../core/p2p/p2p_node.dart';
@@ -14,18 +13,33 @@ class ChatProvider extends ChangeNotifier {
   final Map<String, List<Map<String, dynamic>>> _conversations = {};
   StreamSubscription<Map<String, dynamic>>? _sub;
   StreamSubscription<void>? _networkSub;
+  StreamSubscription<String>? _channelSub;
+
+  final Set<String> _pendingInvitations = {};
 
   ChatProvider(this.node, this.contactRepo, {this.walletProvider}) {
     _sub = node.messages.listen((msg) {
       final data = msg["data"];
-      if (data is Map && data["type"] == "chat") {
-        final peer = data["from"] == node.nodeId ? data["to"] : data["from"];
-        if (peer is String) {
-          messagesWith(peer).add(Map<String, dynamic>.from(data));
-          if (hasListeners) notifyListeners();
+      if (data is Map) {
+        final type = data["type"];
+        if (type == "chat" || type == "contact_invitation") {
+          final peer = data["from"] == node.nodeId ? data["to"] : data["from"];
+          if (peer is String) {
+            messagesWith(peer).add(Map<String, dynamic>.from(data));
+            if (hasListeners) notifyListeners();
+          }
         }
       }
     });
+
+    _channelSub = node.onChannelReady.listen((peerId) {
+      if (_pendingInvitations.contains(peerId)) {
+        node.sendInvitation(peerId);
+        _pendingInvitations.remove(peerId);
+      }
+      if (hasListeners) notifyListeners();
+    });
+
     _networkSub = node.networkChanges.listen((_) {
       if (hasListeners) notifyListeners();
     });
@@ -41,11 +55,18 @@ class ChatProvider extends ChangeNotifier {
   Future<void> addContact(String publicKey, {String? name}) async {
     final key = publicKey.trim();
     if (key.isEmpty || key == node.nodeId) return;
+
     contactRepo.add(key, name: name);
-    try {
-      await node.connectPeer(key);
-    } catch (_) {
-      // Pas grave si offline : la connexion se refera à l'ouverture du chat.
+
+    if (isOnline(key)) {
+      node.sendInvitation(key);
+    } else {
+      _pendingInvitations.add(key);
+      try {
+        await node.connectPeer(key);
+      } catch (_) {
+        // Pas grave si offline
+      }
     }
     notifyListeners();
   }
@@ -53,6 +74,7 @@ class ChatProvider extends ChangeNotifier {
   void removeContact(String publicKey) {
     contactRepo.remove(publicKey);
     _conversations.remove(publicKey);
+    _pendingInvitations.remove(publicKey);
     notifyListeners();
   }
 
@@ -60,6 +82,7 @@ class ChatProvider extends ChangeNotifier {
     if (text.trim().isEmpty) return;
     node.sendChat(peerId, text);
     messagesWith(peerId).add({
+      "type": "chat",
       "from": node.nodeId,
       "to": peerId,
       "text": text,
@@ -91,6 +114,7 @@ class ChatProvider extends ChangeNotifier {
   void dispose() {
     _sub?.cancel();
     _networkSub?.cancel();
+    _channelSub?.cancel();
     super.dispose();
   }
 }

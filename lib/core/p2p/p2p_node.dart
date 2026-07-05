@@ -18,7 +18,6 @@ import '../kernels/market/market_kernel.dart';
 import '../storage/repositories/order_repository.dart';
 import '../storage/repositories/trade_repository.dart';
 
-
 class P2PNode {
   final String nodeId;
   final NodeIdentityKeyPair identity;
@@ -34,18 +33,25 @@ class P2PNode {
   final _networkChangeController = StreamController<void>.broadcast();
   Stream<void> get networkChanges => _networkChangeController.stream;
 
+  final _channelReadyController = StreamController<String>.broadcast();
+  Stream<String> get onChannelReady => _channelReadyController.stream;
+
   bool isSignalingConnected = false;
   Timer? _healthTimer;
 
-late final MarketKernel marketKernel;
+  late final MarketKernel marketKernel;
   late final OrderRepository orderRepo;
   late final TradeRepository tradeRepo;
-
 
   P2PNode(this.identity, ObjectBoxStore db) : nodeId = identity.nodeId {
     p2p = WebRTCNetworkEngine(nodeId);
     peerManager = PeerManager(db, engine: p2p);
     health = NetworkHealth();
+
+    p2p.onChannelOpen = (peerId) {
+      _channelReadyController.add(peerId);
+      _networkChangeController.add(null);
+    };
 
     final dag = DagEngine();
     final consensus = ConsensusEngine();
@@ -66,10 +72,9 @@ late final MarketKernel marketKernel;
       p2p: p2p,
       db: db,
     );
-orderRepo = OrderRepository(db);
+    orderRepo = OrderRepository(db);
     tradeRepo = TradeRepository(db);
     marketKernel = MarketKernel(identity: identity, p2p: p2p, orderRepo: orderRepo, tradeRepo: tradeRepo);
-
   }
 
   Stream<Map<String, dynamic>> get messages => messengerKernel.messages;
@@ -174,8 +179,8 @@ orderRepo = OrderRepository(db);
   }
 
   DagAcceptResult broadcastTx(Transaction tx) => walletKernel.broadcastTx(tx);
-  // lib/core/p2p/p2p_node.dart — remplace UNIQUEMENT cette ligne
-void sendChat(String toPeerId, String text) => messengerKernel.sendPrivateChat(toPeerId, text);
+  void sendChat(String toPeerId, String text) => messengerKernel.sendPrivateChat(toPeerId, text);
+  void sendInvitation(String toPeerId) => messengerKernel.sendContactInvitation(toPeerId);
   Future<void> selfApprove(String txId) => walletKernel.selfApprove(txId);
 
   void stop() {
@@ -185,6 +190,7 @@ void sendChat(String toPeerId, String text) => messengerKernel.sendPrivateChat(t
     walletKernel.dispose();
     messengerKernel.dispose();
     _networkChangeController.close();
-marketKernel.dispose();
+    _channelReadyController.close();
+    marketKernel.dispose();
   }
 }
