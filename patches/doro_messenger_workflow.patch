@@ -1,3 +1,44 @@
+diff --git a/lib/app.dart b/lib/app.dart
+index 572b3d7..3140089 100644
+--- a/lib/app.dart
++++ b/lib/app.dart
+@@ -6,7 +6,7 @@ import 'package:provider/provider.dart';
+ import 'features/home/home_screen.dart';
+ import 'features/wallet/wallet_provider.dart';
+ import 'features/wallet/wallet_screen.dart';
+-import 'features/chat/amis_screen.dart';
++import 'features/chat/chats_screen.dart';
+ import 'features/chat/chat_provider.dart';
+ import 'features/ledger/ledger_provider.dart';
+ import 'features/network/network_provider.dart';
+@@ -111,13 +111,15 @@ class _RootState extends State<Root> {
+   @override
+   Widget build(BuildContext context) {
+     final net = context.watch<NetworkProvider>();
++    final chat = context.watch<ChatProvider>();
+     final online = net.peers.length;
++    final pendingRequests = chat.receivedRequests.length;
+ 
+     return Scaffold(
+       body: IndexedStack(index: index, children: const [
+         HomeScreen(),
+         WalletScreen(),
+-        AmisScreen(),
++        ChatsScreen(),
+         NetworkScreen(),
+       ]),
+       bottomNavigationBar: NavigationBar(
+@@ -127,8 +129,8 @@ class _RootState extends State<Root> {
+           const NavigationDestination(icon: Icon(Icons.home), label: "Home"),
+           const NavigationDestination(icon: Icon(Icons.wallet), label: "Wallet"),
+           NavigationDestination(
+-            icon: Badge(isLabelVisible: online > 0, label: Text("$online"), child: const Icon(Icons.people)),
+-            label: "Amis",
++            icon: Badge(isLabelVisible: pendingRequests > 0, label: Text("$pendingRequests"), child: const Icon(Icons.chat_bubble_outline)),
++            label: "Discussions",
+           ),
+           NavigationDestination(icon: Icon(Icons.wifi, color: net.isConnected ? Colors.green : Colors.grey), label: "Network"),
+         ],
 diff --git a/lib/core/dag/dag_engine.dart b/lib/core/dag/dag_engine.dart
 index 7434ad5..7f42be2 100644
 --- a/lib/core/dag/dag_engine.dart
@@ -527,6 +568,289 @@ index 37e6909..9e8deb0 100644
    }
  
    Future<bool> _verify(String message, String publicKeyHex, String signatureHex) async {
+diff --git a/lib/core/kernels/messenger/messenger_kernel.dart b/lib/core/kernels/messenger/messenger_kernel.dart
+index fb0ee9e..b9a22b8 100644
+--- a/lib/core/kernels/messenger/messenger_kernel.dart
++++ b/lib/core/kernels/messenger/messenger_kernel.dart
+@@ -4,6 +4,7 @@ import '../../p2p/webrtc_engine.dart';
+ import '../../storage/objectbox/store.dart';
+ import '../../storage/entities/chat_message_entity.dart';
+ import '../../storage/entities/contact_entity.dart';
++import '../../storage/friends/friend_request_store.dart';
+ import '../../../objectbox.g.dart';
+ 
+ class MessengerKernel {
+@@ -13,9 +14,19 @@ class MessengerKernel {
+   late final Box<ChatMessageEntity> _msgBox;
+   late final Box<ContactEntity> _contactBox;
+ 
++  /// État des demandes d'ami en attente (envoyées/reçues) — voir
++  /// FriendRequestStore pour la limite technique sur le stockage.
++  final FriendRequestStore friendRequests = FriendRequestStore();
++
+   final _messageController = StreamController<Map<String, dynamic>>.broadcast();
+   Stream<Map<String, dynamic>> get messages => _messageController.stream;
+ 
++  /// Émis à chaque changement d'état d'amitié (demande reçue, acceptée,
++  /// refusée, annulée, ami supprimé) — l'UI (ChatProvider) s'y abonne
++  /// pour rafraîchir listes de demandes/amis sans polling.
++  final _friendEventsController = StreamController<void>.broadcast();
++  Stream<void> get friendEvents => _friendEventsController.stream;
++
+   final Set<String> _seenChatMessages = {};
+ 
+   /// File d'attente des messages qui n'ont PAS pu être transmis
+@@ -24,25 +35,159 @@ class MessengerKernel {
+   /// abandonnait silencieusement le message — l'UI l'affichait comme
+   /// "envoyé" alors qu'il n'avait jamais quitté l'appareil. Chaque
+   /// entrée est renvoyée automatiquement dès que le canal vers ce pair
+-  /// s'ouvre (voir `onPeerChannelOpen`, appelé par P2PNode).
++  /// s'ouvre (voir `onPeerChannelOpen`, appelé par P2PNode). Sert aussi
++  /// bien pour le chat que pour le protocole de demande d'ami.
+   final Map<String, List<Map<String, dynamic>>> _outbox = {};
+ 
+   MessengerKernel({required this.nodeId, required this.p2p, required this.db}) {
+     _msgBox = db.getBox<ChatMessageEntity>();
+     _contactBox = db.getBox<ContactEntity>();
++    friendRequests.load();
+     p2p.messages.listen((msg) {
+       final data = msg.data;
+       final from = msg.from;
+       if (data is Map<String, dynamic>) {
+-        if (data["type"] == "chat") {
+-          _handleIncomingChat(from, data);
+-        } else if (data["type"] == "contact_invitation") {
+-          _handleIncomingInvitation(from, data);
++        switch (data["type"]) {
++          case "chat":
++            _handleIncomingChat(from, data);
++            break;
++          case "friend_request":
++            _handleFriendRequest(data);
++            break;
++          case "friend_accept":
++            _handleFriendAccept(data);
++            break;
++          case "friend_decline":
++            _handleFriendDecline(data);
++            break;
++          case "friend_cancel":
++            _handleFriendCancel(data);
++            break;
+         }
+       }
+     });
+   }
+ 
++  // ---------------- Amis : requêtes sortantes ----------------
++
++  bool isFriend(String publicKey) =>
++      _contactBox.query(ContactEntity_.publicKey.equals(publicKey)).build().findFirst() != null;
++
++  List<ContactEntity> friends() => _contactBox.getAll()..sort((a, b) => a.name.compareTo(b.name));
++
++  /// Envoie une demande d'ami — n'ajoute PAS le pair à mes contacts tout
++  /// de suite : ça n'arrive qu'après acceptation explicite de l'autre
++  /// côté (`_handleFriendAccept`), exactement comme les grandes
++  /// messageries.
++  Future<void> sendFriendRequest(String toPeerId, {String? name}) async {
++    if (toPeerId == nodeId || isFriend(toPeerId)) return;
++    await friendRequests.load();
++    await friendRequests.addSent(toPeerId, name: name);
++    _sendOrQueue(toPeerId, {
++      "type": "friend_request",
++      "from": nodeId,
++      "name": name ?? "",
++      "time": DateTime.now().toIso8601String(),
++    });
++    _friendEventsController.add(null);
++  }
++
++  Future<void> acceptFriendRequest(String fromPeerId) async {
++    await friendRequests.load();
++    final storedName = friendRequests.nameOf(fromPeerId);
++    await friendRequests.remove(fromPeerId);
++    _addAsFriend(fromPeerId, name: storedName);
++    _sendOrQueue(fromPeerId, {"type": "friend_accept", "from": nodeId, "time": DateTime.now().toIso8601String()});
++    _friendEventsController.add(null);
++  }
++
++  Future<void> declineFriendRequest(String fromPeerId) async {
++    await friendRequests.remove(fromPeerId);
++    _sendOrQueue(fromPeerId, {"type": "friend_decline", "from": nodeId, "time": DateTime.now().toIso8601String()});
++    _friendEventsController.add(null);
++  }
++
++  Future<void> cancelFriendRequest(String toPeerId) async {
++    await friendRequests.remove(toPeerId);
++    _sendOrQueue(toPeerId, {"type": "friend_cancel", "from": nodeId, "time": DateTime.now().toIso8601String()});
++    _friendEventsController.add(null);
++  }
++
++  /// Suppression LOCALE UNIQUEMENT — comme WhatsApp/Telegram : retirer
++  /// quelqu'un de mes contacts ne l'avertit pas et ne l'empêche pas de
++  /// m'écrire. Aucun message réseau envoyé ici, volontairement.
++  void removeFriend(String publicKey) {
++    final existing = _contactBox.query(ContactEntity_.publicKey.equals(publicKey)).build().findFirst();
++    if (existing != null) _contactBox.remove(existing.id);
++    _friendEventsController.add(null);
++  }
++
++  void _addAsFriend(String peerId, {String? name}) {
++    final existing = _contactBox.query(ContactEntity_.publicKey.equals(peerId)).build().findFirst();
++    if (existing != null) return;
++    final displayName = (name != null && name.isNotEmpty) ? name : _shortId(peerId);
++    _contactBox.put(ContactEntity(publicKey: peerId, name: displayName));
++  }
++
++  // ---------------- Amis : réception réseau ----------------
++
++  Future<void> _handleFriendRequest(Map<String, dynamic> data) async {
++    final fromId = data["from"] as String?;
++    if (fromId == null || fromId == nodeId) return;
++    await friendRequests.load();
++
++    if (isFriend(fromId)) {
++      // Déjà amis (ex: redemande après désync d'état) — je confirme
++      // quand même pour que son état reparte propre de son côté.
++      _sendOrQueue(fromId, {"type": "friend_accept", "from": nodeId, "time": DateTime.now().toIso8601String()});
++      return;
++    }
++
++    final name = data["name"] as String?;
++
++    if (friendRequests.hasSent(fromId)) {
++      // Demande MUTUELLE : je lui avais déjà envoyé une demande avant de
++      // recevoir la sienne. Comme les grandes messageries, on accepte
++      // automatiquement des deux côtés plutôt que d'afficher une
++      // demande en double qui n'aurait aucun sens à refuser.
++      await friendRequests.remove(fromId);
++      _addAsFriend(fromId, name: (name != null && name.isNotEmpty) ? name : null);
++      _sendOrQueue(fromId, {"type": "friend_accept", "from": nodeId, "time": DateTime.now().toIso8601String()});
++      _friendEventsController.add(null);
++      return;
++    }
++
++    await friendRequests.addReceived(fromId, name: (name != null && name.isNotEmpty) ? name : null);
++    _friendEventsController.add(null);
++  }
++
++  Future<void> _handleFriendAccept(Map<String, dynamic> data) async {
++    final fromId = data["from"] as String?;
++    if (fromId == null) return;
++    await friendRequests.load();
++    if (!friendRequests.hasSent(fromId)) return; // pas de demande en cours de mon côté — ignorer
++    final storedName = friendRequests.nameOf(fromId);
++    await friendRequests.remove(fromId);
++    _addAsFriend(fromId, name: storedName);
++    _friendEventsController.add(null);
++  }
++
++  Future<void> _handleFriendDecline(Map<String, dynamic> data) async {
++    final fromId = data["from"] as String?;
++    if (fromId == null) return;
++    await friendRequests.remove(fromId);
++    _friendEventsController.add(null);
++  }
++
++  Future<void> _handleFriendCancel(Map<String, dynamic> data) async {
++    final fromId = data["from"] as String?;
++    if (fromId == null) return;
++    await friendRequests.remove(fromId);
++    _friendEventsController.add(null);
++  }
++
++  // ---------------- Chat ----------------
++
+   void _handleIncomingChat(String from, Map<String, dynamic> data) {
+     final fromId = data["from"] as String?;
+     final toId = data["to"] as String?;
+@@ -60,48 +205,6 @@ class MessengerKernel {
+     _messageController.add({"from": from, "data": data});
+   }
+ 
+-  void _handleIncomingInvitation(String from, Map<String, dynamic> data) {
+-    final fromId = data["from"] as String?;
+-    if (fromId == null || fromId == nodeId) return;
+-
+-    // Ajouter aux contacts si absent
+-    final existing = _contactBox.query(ContactEntity_.publicKey.equals(fromId)).build().findFirst();
+-    if (existing == null) {
+-      final name = fromId.length > 14 ? "${fromId.substring(0, 8)}…${fromId.substring(fromId.length - 4)}" : fromId;
+-      _contactBox.put(ContactEntity(publicKey: fromId, name: name));
+-    }
+-
+-    // Message système
+-    final time = DateTime.now().toIso8601String();
+-    final inviteMsg = ChatMessageEntity(
+-      fromId: fromId,
+-      text: "👋 Vous a ajouté comme ami",
+-      timestamp: time,
+-      peerKey: fromId,
+-    );
+-    _msgBox.put(inviteMsg);
+-
+-    _messageController.add({
+-      "from": from,
+-      "data": {
+-        "type": "contact_invitation",
+-        "from": fromId,
+-        "text": "👋 Vous a ajouté comme ami",
+-        "time": time,
+-      }
+-    });
+-  }
+-
+-  void sendContactInvitation(String toPeerId) {
+-    final data = {
+-      "type": "contact_invitation",
+-      "from": nodeId,
+-      "to": toPeerId,
+-      "time": DateTime.now().toIso8601String(),
+-    };
+-    _sendOrQueue(toPeerId, data);
+-  }
+-
+   void sendPrivateChat(String toPeerId, String text) {
+     final time = DateTime.now().toIso8601String();
+     final data = {"type": "chat", "from": nodeId, "to": toPeerId, "text": text, "time": time};
+@@ -150,6 +253,23 @@ class MessengerKernel {
+         .toList();
+   }
+ 
++  /// Dernier message échangé avec ce pair (pour l'aperçu dans la liste
++  /// des discussions), ou `null` s'il n'y a encore rien.
++  Map<String, dynamic>? lastMessageWith(String peerKey) {
++    final all = _msgBox.query(ChatMessageEntity_.peerKey.equals(peerKey)).build().find();
++    if (all.isEmpty) return null;
++    all.sort((a, b) => a.timestamp.compareTo(b.timestamp));
++    final e = all.last;
++    return {"from": e.fromId, "text": e.text, "time": e.timestamp};
++  }
++
++  /// Tous les pairs avec qui j'ai un historique de discussion, même
++  /// s'ils ne sont pas (ou plus) dans mes contacts — comme WhatsApp qui
++  /// garde une discussion visible avec un numéro non enregistré.
++  Set<String> peersWithHistory() {
++    return _msgBox.getAll().map((e) => e.peerKey).toSet();
++  }
++
+   void clearHistory(String peerKey) {
+     _msgBox.query(ChatMessageEntity_.peerKey.equals(peerKey)).build().remove();
+   }
+@@ -158,5 +278,11 @@ class MessengerKernel {
+     _msgBox.removeAll();
+   }
+ 
+-  void dispose() => _messageController.close();
++  String _shortId(String key) =>
++      key.length > 14 ? "${key.substring(0, 8)}…${key.substring(key.length - 4)}" : key;
++
++  void dispose() {
++    _messageController.close();
++    _friendEventsController.close();
++  }
+ }
 diff --git a/lib/core/kernels/wallet/wallet_kernel.dart b/lib/core/kernels/wallet/wallet_kernel.dart
 index 7029f30..c221d9e 100644
 --- a/lib/core/kernels/wallet/wallet_kernel.dart
@@ -688,7 +1012,7 @@ index 7029f30..c221d9e 100644
    }
  
 diff --git a/lib/core/p2p/p2p_node.dart b/lib/core/p2p/p2p_node.dart
-index 5746b3c..517823b 100644
+index 5746b3c..2c28316 100644
 --- a/lib/core/p2p/p2p_node.dart
 +++ b/lib/core/p2p/p2p_node.dart
 @@ -53,6 +53,10 @@ class P2PNode {
@@ -711,6 +1035,119 @@ index 5746b3c..517823b 100644
    }
  
    Stream<Map<String, dynamic>> get messages => messengerKernel.messages;
+@@ -88,6 +92,7 @@ class P2PNode {
+ 
+   Future<void> start({String? signalingUrl}) async {
+     await walletKernel.loadPersistedLedger();
++    await messengerKernel.friendRequests.load();
+     Logger.info("Starting P2P node: $nodeId");
+ 
+     if (signalingUrl != null) {
+@@ -184,7 +189,14 @@ class P2PNode {
+ 
+   DagAcceptResult broadcastTx(Transaction tx) => walletKernel.broadcastTx(tx);
+   void sendChat(String toPeerId, String text) => messengerKernel.sendPrivateChat(toPeerId, text);
+-  void sendInvitation(String toPeerId) => messengerKernel.sendContactInvitation(toPeerId);
++
++  Stream<void> get friendEvents => messengerKernel.friendEvents;
++  bool isFriend(String publicKey) => messengerKernel.isFriend(publicKey);
++  Future<void> sendFriendRequest(String toPeerId, {String? name}) => messengerKernel.sendFriendRequest(toPeerId, name: name);
++  Future<void> acceptFriendRequest(String fromPeerId) => messengerKernel.acceptFriendRequest(fromPeerId);
++  Future<void> declineFriendRequest(String fromPeerId) => messengerKernel.declineFriendRequest(fromPeerId);
++  Future<void> cancelFriendRequest(String toPeerId) => messengerKernel.cancelFriendRequest(toPeerId);
++  void removeFriend(String publicKey) => messengerKernel.removeFriend(publicKey);
+   Future<void> selfApprove(String txId) => walletKernel.selfApprove(txId);
+ 
+   void stop() {
+diff --git a/lib/core/storage/friends/friend_request_store.dart b/lib/core/storage/friends/friend_request_store.dart
+new file mode 100644
+index 0000000..63eab51
+--- /dev/null
++++ b/lib/core/storage/friends/friend_request_store.dart
+@@ -0,0 +1,83 @@
++import 'dart:convert';
++import 'package:shared_preferences/shared_preferences.dart';
++
++enum FriendRequestDirection { sent, received }
++
++class FriendRequest {
++  final String publicKey;
++  final String? name;
++  final FriendRequestDirection direction;
++  final String time;
++
++  FriendRequest({required this.publicKey, this.name, required this.direction, required this.time});
++}
++
++/// Suivi des demandes d'ami en attente (envoyées et reçues).
++///
++/// ⚠️ Même contrainte technique que pour les transactions : pas d'accès
++/// à `build_runner` ici, donc pas de nouvelle entité ObjectBox propre
++/// pour ça. `shared_preferences` (déjà une dépendance du projet) est un
++/// choix délibéré et raisonnable pour ce cas précis : c'est un état
++/// transitoire et léger (quelques demandes en attente, pas un historique
++/// à faire grossir indéfiniment), contrairement au ledger de
++/// transactions qui, lui, mérite un vrai stockage structuré.
++///
++/// Les AMIS CONFIRMÉS restent dans `ContactRepository`/`ContactEntity`
++/// comme avant — cette classe ne gère QUE l'état "en attente".
++class FriendRequestStore {
++  static const _prefsKey = 'doro_friend_requests_v1';
++  Map<String, Map<String, String>> _data = {};
++  bool _loaded = false;
++
++  Future<void> load() async {
++    if (_loaded) return;
++    _loaded = true;
++    final prefs = await SharedPreferences.getInstance();
++    final raw = prefs.getString(_prefsKey);
++    if (raw == null) return;
++    try {
++      final decoded = jsonDecode(raw) as Map<String, dynamic>;
++      _data = decoded.map((k, v) => MapEntry(k, Map<String, String>.from(v as Map)));
++    } catch (_) {
++      _data = {};
++    }
++  }
++
++  Future<void> _persist() async {
++    final prefs = await SharedPreferences.getInstance();
++    await prefs.setString(_prefsKey, jsonEncode(_data));
++  }
++
++  bool hasSent(String publicKey) => _data[publicKey]?['direction'] == 'sent';
++  bool hasReceived(String publicKey) => _data[publicKey]?['direction'] == 'received';
++  String? nameOf(String publicKey) {
++    final n = _data[publicKey]?['name'];
++    return (n == null || n.isEmpty) ? null : n;
++  }
++
++  List<FriendRequest> sent() => _entriesWhere('sent');
++  List<FriendRequest> received() => _entriesWhere('received');
++
++  List<FriendRequest> _entriesWhere(String direction) {
++    return _data.entries.where((e) => e.value['direction'] == direction).map((e) => FriendRequest(
++          publicKey: e.key,
++          name: (e.value['name']?.isEmpty ?? true) ? null : e.value['name'],
++          direction: direction == 'sent' ? FriendRequestDirection.sent : FriendRequestDirection.received,
++          time: e.value['time'] ?? '',
++        )).toList();
++  }
++
++  Future<void> addSent(String publicKey, {String? name}) async {
++    _data[publicKey] = {'direction': 'sent', 'name': name ?? '', 'time': DateTime.now().toIso8601String()};
++    await _persist();
++  }
++
++  Future<void> addReceived(String publicKey, {String? name}) async {
++    _data[publicKey] = {'direction': 'received', 'name': name ?? '', 'time': DateTime.now().toIso8601String()};
++    await _persist();
++  }
++
++  Future<void> remove(String publicKey) async {
++    if (_data.remove(publicKey) != null) await _persist();
++  }
++}
 diff --git a/lib/core/storage/repositories/tx_repository.dart b/lib/core/storage/repositories/tx_repository.dart
 index 4f73856..82b781e 100644
 --- a/lib/core/storage/repositories/tx_repository.dart
@@ -812,11 +1249,477 @@ index 4f73856..82b781e 100644
      ));
    }
  
+diff --git a/lib/features/chat/amis_screen.dart b/lib/features/chat/amis_screen.dart
+index 0efa8f1..c59f720 100644
+--- a/lib/features/chat/amis_screen.dart
++++ b/lib/features/chat/amis_screen.dart
+@@ -3,39 +3,110 @@ import 'package:flutter/material.dart';
+ import 'package:provider/provider.dart';
+ import 'chat_provider.dart';
+ import 'chat_screen.dart';
++import '../network/qr_scan_screen.dart';
++import '../network/my_id_card.dart';
+ 
++/// Centre de gestion des contacts, façon grandes messageries :
++/// - Demandes reçues (accepter/refuser)
++/// - Demandes envoyées (annuler)
++/// - Mes amis (discuter/supprimer)
++/// Ajout via QR code (scanner l'ID d'un pair) ou clé publique collée.
+ class AmisScreen extends StatelessWidget {
+   const AmisScreen({super.key});
+ 
+-  void _addContact(BuildContext context) {
+-    final controller = TextEditingController();
+-    final nameController = TextEditingController();
+-    showDialog(
++  Future<void> _addFriend(BuildContext context) async {
++    final chat = context.read<ChatProvider>();
++    final result = await showModalBottomSheet<String>(
+       context: context,
+-      builder: (ctx) => AlertDialog(
+-        title: const Text("Ajouter un ami"),
+-        content: Column(
+-          mainAxisSize: MainAxisSize.min,
+-          children: [
+-            TextField(controller: nameController, decoration: const InputDecoration(labelText: "Nom (optionnel)")),
+-            const SizedBox(height: 8),
+-            TextField(controller: controller, decoration: const InputDecoration(labelText: "Clé publique", hintText: "0x...")),
++      builder: (ctx) => SafeArea(
++        child: Wrap(children: [
++          ListTile(
++            leading: const Icon(Icons.qr_code_scanner),
++            title: const Text("Scanner un QR code"),
++            onTap: () => Navigator.pop(ctx, "qr"),
++          ),
++          ListTile(
++            leading: const Icon(Icons.key),
++            title: const Text("Coller une clé publique"),
++            onTap: () => Navigator.pop(ctx, "paste"),
++          ),
++          ListTile(
++            leading: const Icon(Icons.badge_outlined),
++            title: const Text("Afficher mon QR / mon ID"),
++            onTap: () => Navigator.pop(ctx, "myid"),
++          ),
++        ]),
++      ),
++    );
++    if (!context.mounted || result == null) return;
++
++    if (result == "myid") {
++      showDialog(context: context, builder: (_) => Dialog(child: Padding(padding: const EdgeInsets.all(16), child: MyIdCard(myId: chat.myId))));
++      return;
++    }
++
++    if (result == "qr") {
++      final scanned = await Navigator.push<String>(context, MaterialPageRoute(builder: (_) => const QrScanScreen()));
++      if (scanned != null && scanned.trim().isNotEmpty) {
++        await chat.sendFriendRequest(scanned.trim());
++        if (context.mounted) {
++          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Demande d'ami envoyée")));
++        }
++      }
++      return;
++    }
++
++    if (result == "paste" && context.mounted) {
++      final controller = TextEditingController();
++      final nameController = TextEditingController();
++      await showDialog(
++        context: context,
++        builder: (ctx) => AlertDialog(
++          title: const Text("Ajouter par clé publique"),
++          content: Column(
++            mainAxisSize: MainAxisSize.min,
++            children: [
++              TextField(controller: nameController, decoration: const InputDecoration(labelText: "Nom (optionnel)")),
++              const SizedBox(height: 8),
++              TextField(controller: controller, decoration: const InputDecoration(labelText: "Clé publique", hintText: "0x...")),
++            ],
++          ),
++          actions: [
++            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("Annuler")),
++            FilledButton(
++              onPressed: () async {
++                final key = controller.text.trim();
++                Navigator.pop(ctx);
++                if (key.isNotEmpty) {
++                  await chat.sendFriendRequest(key, name: nameController.text.trim().isEmpty ? null : nameController.text.trim());
++                  if (context.mounted) {
++                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Demande d'ami envoyée")));
++                  }
++                }
++              },
++              child: const Text("Envoyer la demande"),
++            ),
+           ],
+         ),
++      );
++    }
++  }
++
++  void _confirmRemove(BuildContext context, String publicKey, String name) {
++    showDialog(
++      context: context,
++      builder: (ctx) => AlertDialog(
++        title: const Text("Supprimer cet ami ?"),
++        content: Text("$name sera retiré de ta liste d'amis. Ça ne l'avertit pas et n'empêche pas de futurs messages."),
+         actions: [
+           TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("Annuler")),
+           FilledButton(
++            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+             onPressed: () {
+-              final key = controller.text.trim();
+-              if (key.isNotEmpty) {
+-                context.read<ChatProvider>().addContact(
+-                      key,
+-                      name: nameController.text.trim().isEmpty ? null : nameController.text.trim(),
+-                    );
+-                Navigator.pop(ctx);
+-              }
++              context.read<ChatProvider>().removeFriend(publicKey);
++              Navigator.pop(ctx);
+             },
+-            child: const Text("Ajouter"),
++            child: const Text("Supprimer"),
+           ),
+         ],
+       ),
+@@ -45,43 +116,99 @@ class AmisScreen extends StatelessWidget {
+   @override
+   Widget build(BuildContext context) {
+     final provider = context.watch<ChatProvider>();
+-    final contacts = provider.contacts;
++    final received = provider.receivedRequests;
++    final sent = provider.sentRequests;
++    final friends = provider.friends;
+ 
+-    return Scaffold(
+-      appBar: AppBar(
+-        title: const Text("Amis"),
+-        actions: [IconButton(icon: const Icon(Icons.person_add), onPressed: () => _addContact(context))],
+-      ),
+-      body: SafeArea(
+-        child: contacts.isEmpty
+-            ? Center(
+-                child: Padding(
+-                  padding: const EdgeInsets.all(24),
+-                  child: Column(
+-                    mainAxisSize: MainAxisSize.min,
+-                    children: const [
+-                      Icon(Icons.people_outline, size: 48, color: Colors.grey),
+-                      SizedBox(height: 12),
+-                      Text("Aucun ami ajouté.\nAjoute une clé publique pour démarrer une conversation.", textAlign: TextAlign.center),
+-                    ],
++    return DefaultTabController(
++      length: 2,
++      child: Scaffold(
++        appBar: AppBar(
++          title: const Text("Contacts"),
++          actions: [IconButton(icon: const Icon(Icons.person_add), onPressed: () => _addFriend(context))],
++          bottom: TabBar(tabs: [
++            Tab(
++              child: Row(mainAxisSize: MainAxisSize.min, children: [
++                const Text("Demandes"),
++                if (received.isNotEmpty) ...[
++                  const SizedBox(width: 6),
++                  CircleAvatar(radius: 9, backgroundColor: Colors.red, child: Text("${received.length}", style: const TextStyle(fontSize: 10, color: Colors.white))),
++                ],
++              ]),
++            ),
++            Tab(text: "Mes amis (${friends.length})"),
++          ]),
++        ),
++        body: TabBarView(children: [
++          // ---------------- Demandes ----------------
++          ListView(
++            padding: const EdgeInsets.symmetric(vertical: 8),
++            children: [
++              if (received.isEmpty && sent.isEmpty)
++                const Padding(
++                  padding: EdgeInsets.all(32),
++                  child: Center(child: Text("Aucune demande en attente.", textAlign: TextAlign.center)),
++                ),
++              if (received.isNotEmpty) ...[
++                const Padding(padding: EdgeInsets.fromLTRB(16, 8, 16, 4), child: Text("Reçues", style: TextStyle(fontWeight: FontWeight.bold))),
++                ...received.map((r) => ListTile(
++                      leading: const CircleAvatar(child: Icon(Icons.person)),
++                      title: Text(r.name ?? _short(r.publicKey)),
++                      subtitle: Text(r.publicKey, style: const TextStyle(fontFamily: 'monospace', fontSize: 11), overflow: TextOverflow.ellipsis),
++                      trailing: Row(mainAxisSize: MainAxisSize.min, children: [
++                        IconButton(icon: const Icon(Icons.check_circle, color: Colors.green), onPressed: () => context.read<ChatProvider>().acceptRequest(r.publicKey)),
++                        IconButton(icon: const Icon(Icons.cancel, color: Colors.red), onPressed: () => context.read<ChatProvider>().declineRequest(r.publicKey)),
++                      ]),
++                    )),
++              ],
++              if (sent.isNotEmpty) ...[
++                const Padding(padding: EdgeInsets.fromLTRB(16, 16, 16, 4), child: Text("Envoyées", style: TextStyle(fontWeight: FontWeight.bold))),
++                ...sent.map((r) => ListTile(
++                      leading: const CircleAvatar(child: Icon(Icons.hourglass_top)),
++                      title: Text(r.name ?? _short(r.publicKey)),
++                      subtitle: const Text("En attente de réponse…"),
++                      trailing: TextButton(onPressed: () => context.read<ChatProvider>().cancelRequest(r.publicKey), child: const Text("Annuler")),
++                    )),
++              ],
++            ],
++          ),
++
++          // ---------------- Mes amis ----------------
++          friends.isEmpty
++              ? Center(
++                  child: Padding(
++                    padding: const EdgeInsets.all(24),
++                    child: Column(
++                      mainAxisSize: MainAxisSize.min,
++                      children: const [
++                        Icon(Icons.people_outline, size: 48, color: Colors.grey),
++                        SizedBox(height: 12),
++                        Text("Aucun ami pour l'instant.\nAjoute quelqu'un via QR code ou clé publique.", textAlign: TextAlign.center),
++                      ],
++                    ),
+                   ),
++                )
++              : ListView.builder(
++                  itemCount: friends.length,
++                  itemBuilder: (context, i) {
++                    final c = friends[i];
++                    final online = provider.isOnline(c.publicKey);
++                    return ListTile(
++                      leading: CircleAvatar(child: Text(c.name.isNotEmpty ? c.name[0].toUpperCase() : "?")),
++                      title: Text(c.name),
++                      subtitle: Text(c.publicKey, style: const TextStyle(fontFamily: 'monospace', fontSize: 11), overflow: TextOverflow.ellipsis),
++                      trailing: Row(mainAxisSize: MainAxisSize.min, children: [
++                        Icon(Icons.circle, size: 10, color: online ? Colors.green : Colors.grey),
++                        IconButton(icon: const Icon(Icons.more_vert), onPressed: () => _confirmRemove(context, c.publicKey, c.name)),
++                      ]),
++                      onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => ChatScreen(peerId: c.publicKey, peerName: c.name))),
++                    );
++                  },
+                 ),
+-              )
+-            : ListView.builder(
+-                itemCount: contacts.length,
+-                itemBuilder: (context, i) {
+-                  final c = contacts[i];
+-                  final online = provider.isOnline(c.publicKey);
+-                  return ListTile(
+-                    leading: CircleAvatar(child: Text(c.name.isNotEmpty ? c.name[0].toUpperCase() : "?")),
+-                    title: Text(c.name),
+-                    subtitle: Text(c.publicKey, style: const TextStyle(fontFamily: 'monospace', fontSize: 11), overflow: TextOverflow.ellipsis),
+-                    trailing: Icon(Icons.circle, size: 10, color: online ? Colors.green : Colors.grey),
+-                    onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => ChatScreen(peerId: c.publicKey, peerName: c.name))),
+-                  );
+-                },
+-              ),
++        ]),
+       ),
+     );
+   }
+-}
+\ No newline at end of file
++
++  String _short(String key) => key.length > 14 ? "${key.substring(0, 8)}…${key.substring(key.length - 4)}" : key;
++}
 diff --git a/lib/features/chat/chat_provider.dart b/lib/features/chat/chat_provider.dart
-index 7c4e0b3..1af5f3b 100644
+index 7c4e0b3..eec127b 100644
 --- a/lib/features/chat/chat_provider.dart
 +++ b/lib/features/chat/chat_provider.dart
-@@ -98,12 +98,12 @@ class ChatProvider extends ChangeNotifier {
+@@ -2,41 +2,67 @@ import 'dart:async';
+ import 'package:flutter/material.dart';
+ import '../../core/p2p/p2p_node.dart';
+ import '../../core/storage/entities/contact_entity.dart';
++import '../../core/storage/friends/friend_request_store.dart';
+ import '../../core/storage/repositories/contact_repository.dart';
+ import '../wallet/wallet_provider.dart';
+ 
++/// Aperçu d'une discussion pour la liste "Discussions" — comme l'écran
++/// d'accueil de WhatsApp/Telegram : dernier message, heure, non-lus.
++class ConversationPreview {
++  final String peerId;
++  final String name;
++  final bool isFriend;
++  final bool online;
++  final String? lastMessage;
++  final String? lastTime;
++  final int unread;
++
++  ConversationPreview({
++    required this.peerId,
++    required this.name,
++    required this.isFriend,
++    required this.online,
++    this.lastMessage,
++    this.lastTime,
++    this.unread = 0,
++  });
++}
++
+ class ChatProvider extends ChangeNotifier {
+   final P2PNode node;
+   final ContactRepository contactRepo;
+   WalletProvider? walletProvider;
+ 
+   final Map<String, List<Map<String, dynamic>>> _conversations = {};
++  final Map<String, int> _unread = {};
+   StreamSubscription<Map<String, dynamic>>? _sub;
+   StreamSubscription<void>? _networkSub;
+   StreamSubscription<String>? _channelSub;
+-
+-  final Set<String> _pendingInvitations = {};
++  StreamSubscription<void>? _friendSub;
+ 
+   ChatProvider(this.node, this.contactRepo, {this.walletProvider}) {
+     _sub = node.messages.listen((msg) {
+       final data = msg["data"];
+       if (data is Map) {
+         final type = data["type"];
+-        if (type == "chat" || type == "contact_invitation") {
++        if (type == "chat") {
+           final peer = data["from"] == node.nodeId ? data["to"] : data["from"];
+           if (peer is String) {
+             messagesWith(peer).add(Map<String, dynamic>.from(data));
++            if (peer != _activePeer) {
++              _unread[peer] = (_unread[peer] ?? 0) + 1;
++            }
+             if (hasListeners) notifyListeners();
+           }
+         }
+       }
+     });
+ 
+-    _channelSub = node.onChannelReady.listen((peerId) {
+-      if (_pendingInvitations.contains(peerId)) {
+-        node.sendInvitation(peerId);
+-        _pendingInvitations.remove(peerId);
+-      }
++    _friendSub = node.friendEvents.listen((_) {
++      if (hasListeners) notifyListeners();
++    });
++
++    _channelSub = node.onChannelReady.listen((_) {
+       if (hasListeners) notifyListeners();
+     });
+ 
+@@ -45,39 +71,102 @@ class ChatProvider extends ChangeNotifier {
+     });
+   }
+ 
+-  List<ContactEntity> get contacts => contactRepo.all();
++  String? _activePeer;
++  /// À appeler par ChatScreen quand une discussion s'ouvre/se ferme —
++  /// évite d'incrémenter le compteur de non-lus pour la conversation
++  /// actuellement affichée à l'écran.
++  void setActivePeer(String? peerId) {
++    _activePeer = peerId;
++    if (peerId != null) markRead(peerId);
++  }
++
++  void markRead(String peerId) {
++    if (_unread.remove(peerId) != null) notifyListeners();
++  }
++
+   bool isOnline(String peerId) => node.p2p.peers.containsKey(peerId);
+   String get myId => node.nodeId;
+ 
+-  List<Map<String, dynamic>> messagesWith(String peerId) =>
+-      _conversations.putIfAbsent(peerId, () => node.messengerKernel.historyWith(peerId));
++  // ---------------- Amis : listes ----------------
++
++  List<ContactEntity> get friends => contactRepo.all();
++  List<FriendRequest> get receivedRequests => node.messengerKernel.friendRequests.received();
++  List<FriendRequest> get sentRequests => node.messengerKernel.friendRequests.sent();
++  bool isFriend(String publicKey) => node.isFriend(publicKey);
++
++  /// La liste "Discussions" : tous les amis + tout pair avec qui j'ai
++  /// déjà échangé des messages (même sans lien d'amitié confirmé — comme
++  /// une discussion WhatsApp avec un numéro non enregistré), triée par
++  /// message le plus récent.
++  List<ConversationPreview> get conversations {
++    final peerIds = <String>{
++      ...friends.map((c) => c.publicKey),
++      ...node.messengerKernel.peersWithHistory(),
++    };
++    final list = peerIds.map((peerId) {
++      final contact = friends.firstWhere((c) => c.publicKey == peerId, orElse: () => ContactEntity(publicKey: peerId, name: _shortId(peerId)));
++      final last = node.messengerKernel.lastMessageWith(peerId);
++      return ConversationPreview(
++        peerId: peerId,
++        name: contact.name,
++        isFriend: isFriend(peerId),
++        online: isOnline(peerId),
++        lastMessage: last?["text"] as String?,
++        lastTime: last?["time"] as String?,
++        unread: _unread[peerId] ?? 0,
++      );
++    }).toList();
++    list.sort((a, b) => (b.lastTime ?? '').compareTo(a.lastTime ?? ''));
++    return list;
++  }
+ 
+-  Future<void> addContact(String publicKey, {String? name}) async {
+-    final key = publicKey.trim();
+-    if (key.isEmpty || key == node.nodeId) return;
++  String _shortId(String key) => key.length > 14 ? "${key.substring(0, 8)}…${key.substring(key.length - 4)}" : key;
+ 
+-    contactRepo.add(key, name: name);
++  // ---------------- Amis : actions ----------------
+ 
+-    if (isOnline(key)) {
+-      node.sendInvitation(key);
+-    } else {
+-      _pendingInvitations.add(key);
++  Future<void> sendFriendRequest(String publicKey, {String? name}) async {
++    final key = publicKey.trim();
++    if (key.isEmpty || key == node.nodeId) return;
++    await node.sendFriendRequest(key, name: name);
++    if (!isOnline(key)) {
++      // Pair pas encore connu du réseau local (ex: on vient de scanner
++      // son QR) — sans ça, la demande resterait en file d'attente sans
++      // jamais tenter la connexion WebRTC qui permettrait de la livrer.
+       try {
+         await node.connectPeer(key);
+       } catch (_) {
+-        // Pas grave si offline
++        // Pas grave si hors ligne pour l'instant — la demande partira
++        // dès que le canal s'ouvrira (voir MessengerKernel._outbox).
+       }
+     }
+     notifyListeners();
+   }
+ 
+-  void removeContact(String publicKey) {
+-    contactRepo.remove(publicKey);
+-    _conversations.remove(publicKey);
+-    _pendingInvitations.remove(publicKey);
++  Future<void> acceptRequest(String publicKey) async {
++    await node.acceptFriendRequest(publicKey);
++    notifyListeners();
++  }
++
++  Future<void> declineRequest(String publicKey) async {
++    await node.declineFriendRequest(publicKey);
++    notifyListeners();
++  }
++
++  Future<void> cancelRequest(String publicKey) async {
++    await node.cancelFriendRequest(publicKey);
+     notifyListeners();
+   }
+ 
++  void removeFriend(String publicKey) {
++    node.removeFriend(publicKey);
++    notifyListeners();
++  }
++
++  // ---------------- Chat ----------------
++
++  List<Map<String, dynamic>> messagesWith(String peerId) =>
++      _conversations.putIfAbsent(peerId, () => node.messengerKernel.historyWith(peerId));
++
+   void send(String peerId, String text) {
+     if (text.trim().isEmpty) return;
+     messagesWith(peerId).add({
+@@ -98,12 +187,12 @@ class ChatProvider extends ChangeNotifier {
  
    Future<bool> sendCrypto(String toAddress, BigInt amount) async {
      if (walletProvider == null || walletProvider!.wallets.isEmpty) return false;
@@ -831,7 +1734,7 @@ index 7c4e0b3..1af5f3b 100644
        messagesWith(toAddress).add({
          "type": "tx_info",
          "from": node.nodeId,
-@@ -112,7 +112,7 @@ class ChatProvider extends ChangeNotifier {
+@@ -112,7 +201,7 @@ class ChatProvider extends ChangeNotifier {
        });
        notifyListeners();
      }
@@ -840,8 +1743,16 @@ index 7c4e0b3..1af5f3b 100644
    }
  
    void clearHistory(String peerId) {
+@@ -132,6 +221,7 @@ class ChatProvider extends ChangeNotifier {
+     _sub?.cancel();
+     _networkSub?.cancel();
+     _channelSub?.cancel();
++    _friendSub?.cancel();
+     super.dispose();
+   }
+ }
 diff --git a/lib/features/chat/chat_screen.dart b/lib/features/chat/chat_screen.dart
-index 37732fc..6e158a3 100644
+index 37732fc..a10ec31 100644
 --- a/lib/features/chat/chat_screen.dart
 +++ b/lib/features/chat/chat_screen.dart
 @@ -1,6 +1,7 @@
@@ -852,7 +1763,30 @@ index 37732fc..6e158a3 100644
  import 'chat_provider.dart';
  
  class ChatScreen extends StatefulWidget {
-@@ -57,9 +58,16 @@ class _ChatScreenState extends State<ChatScreen> {
+@@ -15,11 +16,22 @@ class ChatScreen extends StatefulWidget {
+ class _ChatScreenState extends State<ChatScreen> {
+   final controller = TextEditingController();
+   final scrollCtrl = ScrollController();
++  late ChatProvider _chatProvider;
++
++  @override
++  void initState() {
++    super.initState();
++    _chatProvider = context.read<ChatProvider>();
++    WidgetsBinding.instance.addPostFrameCallback((_) {
++      if (mounted) _chatProvider.setActivePeer(widget.peerId);
++    });
++  }
+ 
+   @override
+   void dispose() {
+     controller.dispose();
+     scrollCtrl.dispose();
++    _chatProvider.setActivePeer(null);
+     super.dispose();
+   }
+ 
+@@ -57,9 +69,16 @@ class _ChatScreenState extends State<ChatScreen> {
              onPressed: () async {
                final amountStr = amountController.text.trim();
                if (amountStr.isEmpty) return;
@@ -870,6 +1804,119 @@ index 37732fc..6e158a3 100644
                final ok = await context.read<ChatProvider>().sendCrypto(widget.peerId, amount);
                navigator.pop();
                scaffoldMessenger.showSnackBar(SnackBar(content: Text(ok ? "Transfert réussi" : "Échec du transfert")));
+diff --git a/lib/features/chat/chats_screen.dart b/lib/features/chat/chats_screen.dart
+new file mode 100644
+index 0000000..8cfecf1
+--- /dev/null
++++ b/lib/features/chat/chats_screen.dart
+@@ -0,0 +1,107 @@
++// lib/features/chat/chats_screen.dart
++import 'package:flutter/material.dart';
++import 'package:provider/provider.dart';
++import 'chat_provider.dart';
++import 'chat_screen.dart';
++import 'amis_screen.dart';
++
++/// Écran d'accueil de la messagerie : toutes les discussions (amis +
++/// pairs avec qui j'ai déjà échangé), triées par message le plus
++/// récent — comme l'onglet principal de WhatsApp/Telegram.
++class ChatsScreen extends StatelessWidget {
++  const ChatsScreen({super.key});
++
++  String _formatTime(String? iso){
++    if (iso == null) return "";
++    final dt = DateTime.tryParse(iso);
++    if (dt == null) return "";
++    final now = DateTime.now();
++    final sameDay = dt.year==now.year && dt.month==now.month && dt.day==now.day;
++    if (sameDay) return "${dt.hour.toString().padLeft(2,'0')}:${dt.minute.toString().padLeft(2,'0')}";
++    return "${dt.day}/${dt.month}";
++  }
++
++  @override
++  Widget build(BuildContext context) {
++    final provider = context.watch<ChatProvider>();
++    final conversations = provider.conversations;
++    final pendingCount = provider.receivedRequests.length;
++
++    return Scaffold(
++      appBar: AppBar(
++        title: const Text("Discussions"),
++        actions: [
++          IconButton(
++            icon: Badge(isLabelVisible: pendingCount > 0, label: Text("$pendingCount"), child: const Icon(Icons.person_add_alt)),
++            tooltip: "Contacts",
++            onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AmisScreen())),
++          ),
++        ],
++      ),
++      body: conversations.isEmpty
++          ? Center(
++              child: Padding(
++                padding: const EdgeInsets.all(24),
++                child: Column(
++                  mainAxisSize: MainAxisSize.min,
++                  children: [
++                    const Icon(Icons.chat_bubble_outline, size: 48, color: Colors.grey),
++                    const SizedBox(height: 12),
++                    const Text("Aucune discussion pour l'instant.", textAlign: TextAlign.center),
++                    const SizedBox(height: 12),
++                    FilledButton.icon(
++                      icon: const Icon(Icons.person_add),
++                      label: const Text("Ajouter un ami"),
++                      onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AmisScreen())),
++                    ),
++                  ],
++                ),
++              ),
++            )
++          : ListView.separated(
++              itemCount: conversations.length,
++              separatorBuilder: (_, __) => const Divider(height: 1, indent: 72),
++              itemBuilder: (context, i) {
++                final c = conversations[i];
++                return ListTile(
++                  leading: Stack(children: [
++                    CircleAvatar(radius: 22, child: Text(c.name.isNotEmpty ? c.name[0].toUpperCase() : "?")),
++                    Positioned(
++                      right: 0, bottom: 0,
++                      child: Container(
++                        width: 11, height: 11,
++                        decoration: BoxDecoration(
++                          color: c.online ? Colors.green : Colors.grey,
++                          shape: BoxShape.circle,
++                          border: Border.all(color: Theme.of(context).scaffoldBackgroundColor, width: 2),
++                        ),
++                      ),
++                    ),
++                  ]),
++                  title: Row(children: [
++                    Expanded(child: Text(c.name, overflow: TextOverflow.ellipsis, style: TextStyle(fontWeight: c.unread > 0 ? FontWeight.bold : FontWeight.normal))),
++                    if (!c.isFriend) const Padding(padding: EdgeInsets.only(left: 4), child: Icon(Icons.person_outline, size: 14, color: Colors.grey)),
++                  ]),
++                  subtitle: Text(
++                    c.lastMessage ?? "Aucun message",
++                    maxLines: 1, overflow: TextOverflow.ellipsis,
++                    style: TextStyle(color: c.unread > 0 ? null : Colors.grey, fontWeight: c.unread > 0 ? FontWeight.w600 : FontWeight.normal),
++                  ),
++                  trailing: Column(crossAxisAlignment: CrossAxisAlignment.end, mainAxisSize: MainAxisSize.min, children: [
++                    Text(_formatTime(c.lastTime), style: const TextStyle(fontSize: 11, color: Colors.grey)),
++                    if (c.unread > 0) Padding(
++                      padding: const EdgeInsets.only(top: 4),
++                      child: CircleAvatar(radius: 9, backgroundColor: Theme.of(context).colorScheme.primary, child: Text("${c.unread}", style: const TextStyle(fontSize: 10, color: Colors.white))),
++                    ),
++                  ]),
++                  onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => ChatScreen(peerId: c.peerId, peerName: c.name))),
++                );
++              },
++            ),
++      floatingActionButton: FloatingActionButton(
++        child: const Icon(Icons.person_add),
++        onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AmisScreen())),
++      ),
++    );
++  }
++}
 diff --git a/lib/features/home/home_screen.dart b/lib/features/home/home_screen.dart
 index 91f0d8c..4b5d614 100644
 --- a/lib/features/home/home_screen.dart
@@ -965,6 +2012,31 @@ index 2bf2485..29f3014 100644
    }
  }
 \ No newline at end of file
+diff --git a/lib/features/network/network_screen.dart b/lib/features/network/network_screen.dart
+index 104ea51..2374418 100644
+--- a/lib/features/network/network_screen.dart
++++ b/lib/features/network/network_screen.dart
+@@ -7,8 +7,6 @@ import 'network_provider.dart';
+ import 'my_id_card.dart';
+ import 'qr_scan_screen.dart';
+ import '../chat/chat_screen.dart';
+-// en haut du fichier, ajouter :
+-import '../chat/chat_provider.dart';
+ 
+ class NetworkScreen extends StatefulWidget {
+   const NetworkScreen({super.key});
+@@ -177,10 +175,7 @@ class _NetworkScreenState extends State<NetworkScreen> {
+ trailing: IconButton(
+   icon: const Icon(Icons.chat_bubble_outline),
+   tooltip: "Discuter",
+-  onPressed: () async {
+-    final chat = context.read<ChatProvider>();
+-    await chat.addContact(peerId);
+-    if (!context.mounted) return;
++  onPressed: () {
+     Navigator.of(context).push(
+       MaterialPageRoute(builder: (_) => ChatScreen(peerId: peerId, peerName: peerId.substring(0, 12))),
+     );
 diff --git a/lib/features/wallet/send_screen.dart b/lib/features/wallet/send_screen.dart
 index 9a97450..cc0f8ad 100644
 --- a/lib/features/wallet/send_screen.dart
@@ -1062,7 +2134,7 @@ index 8446bd8..d051133 100644
  
    void load() {
 diff --git a/lib/features/wallet/wallet_screen.dart b/lib/features/wallet/wallet_screen.dart
-index cdabfce..7cb906b 100644
+index cdabfce..718dfab 100644
 --- a/lib/features/wallet/wallet_screen.dart
 +++ b/lib/features/wallet/wallet_screen.dart
 @@ -9,6 +9,7 @@ import '../chat/chat_provider.dart';
@@ -1073,7 +2145,17 @@ index cdabfce..7cb906b 100644
  
  String formatDoro(BigInt atomicBalance) {
    const decimals = 18;
-@@ -211,8 +212,21 @@ class _WalletScreenState extends State<WalletScreen> {
+@@ -120,9 +121,6 @@ class _WalletScreenState extends State<WalletScreen> {
+   }
+ 
+   Future<void> _openChatWith(BuildContext context, String peerId) async {
+-    final chat = context.read<ChatProvider>();
+-    await chat.addContact(peerId);
+-    if (!context.mounted) return;
+     Navigator.push(
+       context,
+       MaterialPageRoute(builder: (_) => ChatScreen(peerId: peerId, peerName: peerId.substring(0, 12))),
+@@ -211,8 +209,21 @@ class _WalletScreenState extends State<WalletScreen> {
              if (ledger.transactions.isEmpty)
                const Padding(padding: EdgeInsets.all(16), child: Text("Aucune transaction pour l'instant.")),
              ...ledger.transactions.map((tx) {

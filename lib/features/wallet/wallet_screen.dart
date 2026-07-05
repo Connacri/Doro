@@ -5,7 +5,6 @@ import 'package:provider/provider.dart';
 import 'wallet_provider.dart';
 import 'send_screen.dart';
 import '../ledger/ledger_provider.dart';
-import '../chat/chat_provider.dart';
 import '../chat/chat_screen.dart';
 import '../../core/wallet/genesis.dart';
 import '../../core/wallet/token_config.dart';
@@ -114,9 +113,6 @@ class _WalletScreenState extends State<WalletScreen> {
   }
 
   Future<void> _openChatWith(BuildContext context, String peerId) async {
-    final chat = context.read<ChatProvider>();
-    await chat.addContact(peerId);
-    if (!context.mounted) return;
     Navigator.push(
       context,
       MaterialPageRoute(builder: (_) => ChatScreen(peerId: peerId, peerName: peerId.substring(0, 12))),

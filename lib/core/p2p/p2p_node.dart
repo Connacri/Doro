@@ -92,6 +92,7 @@ class P2PNode {
 
   Future<void> start({String? signalingUrl}) async {
     await walletKernel.loadPersistedLedger();
+    await messengerKernel.friendRequests.load();
     Logger.info("Starting P2P node: $nodeId");
 
     if (signalingUrl != null) {
@@ -188,7 +189,14 @@ class P2PNode {
 
   DagAcceptResult broadcastTx(Transaction tx) => walletKernel.broadcastTx(tx);
   void sendChat(String toPeerId, String text) => messengerKernel.sendPrivateChat(toPeerId, text);
-  void sendInvitation(String toPeerId) => messengerKernel.sendContactInvitation(toPeerId);
+
+  Stream<void> get friendEvents => messengerKernel.friendEvents;
+  bool isFriend(String publicKey) => messengerKernel.isFriend(publicKey);
+  Future<void> sendFriendRequest(String toPeerId, {String? name}) => messengerKernel.sendFriendRequest(toPeerId, name: name);
+  Future<void> acceptFriendRequest(String fromPeerId) => messengerKernel.acceptFriendRequest(fromPeerId);
+  Future<void> declineFriendRequest(String fromPeerId) => messengerKernel.declineFriendRequest(fromPeerId);
+  Future<void> cancelFriendRequest(String toPeerId) => messengerKernel.cancelFriendRequest(toPeerId);
+  void removeFriend(String publicKey) => messengerKernel.removeFriend(publicKey);
   Future<void> selfApprove(String txId) => walletKernel.selfApprove(txId);
 
   void stop() {

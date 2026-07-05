@@ -6,7 +6,7 @@ import 'package:provider/provider.dart';
 import 'features/home/home_screen.dart';
 import 'features/wallet/wallet_provider.dart';
 import 'features/wallet/wallet_screen.dart';
-import 'features/chat/amis_screen.dart';
+import 'features/chat/chats_screen.dart';
 import 'features/chat/chat_provider.dart';
 import 'features/ledger/ledger_provider.dart';
 import 'features/network/network_provider.dart';
@@ -125,13 +125,14 @@ class _RootState extends State<Root> {
   @override
   Widget build(BuildContext context) {
     final net = context.watch<NetworkProvider>();
-    final online = net.peers.length;
+    final chat = context.watch<ChatProvider>();
+    final pendingRequests = chat.receivedRequests.length;
 
     return Scaffold(
       body: IndexedStack(index: index, children: const [
         HomeScreen(),
         WalletScreen(),
-        AmisScreen(),
+        ChatsScreen(),
         NetworkScreen(),
       ]),
       bottomNavigationBar: NavigationBar(
@@ -141,8 +142,8 @@ class _RootState extends State<Root> {
           const NavigationDestination(icon: Icon(Icons.home), label: "Home"),
           const NavigationDestination(icon: Icon(Icons.wallet), label: "Wallet"),
           NavigationDestination(
-            icon: Badge(isLabelVisible: online > 0, label: Text("$online"), child: const Icon(Icons.people)),
-            label: "Amis",
+            icon: Badge(isLabelVisible: pendingRequests > 0, label: Text("$pendingRequests"), child: const Icon(Icons.chat_bubble_outline)),
+            label: "Discussions",
           ),
           NavigationDestination(icon: Icon(Icons.wifi, color: net.isConnected ? Colors.green : Colors.grey), label: "Network"),
         ],

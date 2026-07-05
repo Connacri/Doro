@@ -7,8 +7,6 @@ import 'network_provider.dart';
 import 'my_id_card.dart';
 import 'qr_scan_screen.dart';
 import '../chat/chat_screen.dart';
-// en haut du fichier, ajouter :
-import '../chat/chat_provider.dart';
 
 class NetworkScreen extends StatefulWidget {
   const NetworkScreen({super.key});
@@ -177,10 +175,7 @@ class _NetworkScreenState extends State<NetworkScreen> {
 trailing: IconButton(
   icon: const Icon(Icons.chat_bubble_outline),
   tooltip: "Discuter",
-  onPressed: () async {
-    final chat = context.read<ChatProvider>();
-    await chat.addContact(peerId);
-    if (!context.mounted) return;
+  onPressed: () {
     Navigator.of(context).push(
       MaterialPageRoute(builder: (_) => ChatScreen(peerId: peerId, peerName: peerId.substring(0, 12))),
     );

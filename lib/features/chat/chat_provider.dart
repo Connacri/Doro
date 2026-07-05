@@ -2,8 +2,31 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import '../../core/p2p/p2p_node.dart';
 import '../../core/storage/entities/contact_entity.dart';
+import '../../core/storage/friends/friend_request_store.dart';
 import '../../core/storage/repositories/contact_repository.dart';
 import '../wallet/wallet_provider.dart';
+
+/// Aperçu d'une discussion pour la liste "Discussions" — comme l'écran
+/// d'accueil de WhatsApp/Telegram : dernier message, heure, non-lus.
+class ConversationPreview {
+  final String peerId;
+  final String name;
+  final bool isFriend;
+  final bool online;
+  final String? lastMessage;
+  final String? lastTime;
+  final int unread;
+
+  ConversationPreview({
+    required this.peerId,
+    required this.name,
+    required this.isFriend,
+    required this.online,
+    this.lastMessage,
+    this.lastTime,
+    this.unread = 0,
+  });
+}
 
 class ChatProvider extends ChangeNotifier {
   final P2PNode node;
@@ -11,32 +34,35 @@ class ChatProvider extends ChangeNotifier {
   WalletProvider? walletProvider;
 
   final Map<String, List<Map<String, dynamic>>> _conversations = {};
+  final Map<String, int> _unread = {};
   StreamSubscription<Map<String, dynamic>>? _sub;
   StreamSubscription<void>? _networkSub;
   StreamSubscription<String>? _channelSub;
-
-  final Set<String> _pendingInvitations = {};
+  StreamSubscription<void>? _friendSub;
 
   ChatProvider(this.node, this.contactRepo, {this.walletProvider}) {
     _sub = node.messages.listen((msg) {
       final data = msg["data"];
       if (data is Map) {
         final type = data["type"];
-        if (type == "chat" || type == "contact_invitation") {
+        if (type == "chat") {
           final peer = data["from"] == node.nodeId ? data["to"] : data["from"];
           if (peer is String) {
             messagesWith(peer).add(Map<String, dynamic>.from(data));
+            if (peer != _activePeer) {
+              _unread[peer] = (_unread[peer] ?? 0) + 1;
+            }
             if (hasListeners) notifyListeners();
           }
         }
       }
     });
 
-    _channelSub = node.onChannelReady.listen((peerId) {
-      if (_pendingInvitations.contains(peerId)) {
-        node.sendInvitation(peerId);
-        _pendingInvitations.remove(peerId);
-      }
+    _friendSub = node.friendEvents.listen((_) {
+      if (hasListeners) notifyListeners();
+    });
+
+    _channelSub = node.onChannelReady.listen((_) {
       if (hasListeners) notifyListeners();
     });
 
@@ -45,38 +71,101 @@ class ChatProvider extends ChangeNotifier {
     });
   }
 
-  List<ContactEntity> get contacts => contactRepo.all();
+  String? _activePeer;
+  /// À appeler par ChatScreen quand une discussion s'ouvre/se ferme —
+  /// évite d'incrémenter le compteur de non-lus pour la conversation
+  /// actuellement affichée à l'écran.
+  void setActivePeer(String? peerId) {
+    _activePeer = peerId;
+    if (peerId != null) markRead(peerId);
+  }
+
+  void markRead(String peerId) {
+    if (_unread.remove(peerId) != null) notifyListeners();
+  }
+
   bool isOnline(String peerId) => node.p2p.peers.containsKey(peerId);
   String get myId => node.nodeId;
 
-  List<Map<String, dynamic>> messagesWith(String peerId) =>
-      _conversations.putIfAbsent(peerId, () => node.messengerKernel.historyWith(peerId));
+  // ---------------- Amis : listes ----------------
 
-  Future<void> addContact(String publicKey, {String? name}) async {
+  List<ContactEntity> get friends => contactRepo.all();
+  List<FriendRequest> get receivedRequests => node.messengerKernel.friendRequests.received();
+  List<FriendRequest> get sentRequests => node.messengerKernel.friendRequests.sent();
+  bool isFriend(String publicKey) => node.isFriend(publicKey);
+
+  /// La liste "Discussions" : tous les amis + tout pair avec qui j'ai
+  /// déjà échangé des messages (même sans lien d'amitié confirmé — comme
+  /// une discussion WhatsApp avec un numéro non enregistré), triée par
+  /// message le plus récent.
+  List<ConversationPreview> get conversations {
+    final peerIds = <String>{
+      ...friends.map((c) => c.publicKey),
+      ...node.messengerKernel.peersWithHistory(),
+    };
+    final list = peerIds.map((peerId) {
+      final contact = friends.firstWhere((c) => c.publicKey == peerId, orElse: () => ContactEntity(publicKey: peerId, name: _shortId(peerId)));
+      final last = node.messengerKernel.lastMessageWith(peerId);
+      return ConversationPreview(
+        peerId: peerId,
+        name: contact.name,
+        isFriend: isFriend(peerId),
+        online: isOnline(peerId),
+        lastMessage: last?["text"] as String?,
+        lastTime: last?["time"] as String?,
+        unread: _unread[peerId] ?? 0,
+      );
+    }).toList();
+    list.sort((a, b) => (b.lastTime ?? '').compareTo(a.lastTime ?? ''));
+    return list;
+  }
+
+  String _shortId(String key) => key.length > 14 ? "${key.substring(0, 8)}…${key.substring(key.length - 4)}" : key;
+
+  // ---------------- Amis : actions ----------------
+
+  Future<void> sendFriendRequest(String publicKey, {String? name}) async {
     final key = publicKey.trim();
     if (key.isEmpty || key == node.nodeId) return;
-
-    contactRepo.add(key, name: name);
-
-    if (isOnline(key)) {
-      node.sendInvitation(key);
-    } else {
-      _pendingInvitations.add(key);
+    await node.sendFriendRequest(key, name: name);
+    if (!isOnline(key)) {
+      // Pair pas encore connu du réseau local (ex: on vient de scanner
+      // son QR) — sans ça, la demande resterait en file d'attente sans
+      // jamais tenter la connexion WebRTC qui permettrait de la livrer.
       try {
         await node.connectPeer(key);
       } catch (_) {
-        // Pas grave si offline
+        // Pas grave si hors ligne pour l'instant — la demande partira
+        // dès que le canal s'ouvrira (voir MessengerKernel._outbox).
       }
     }
     notifyListeners();
   }
 
-  void removeContact(String publicKey) {
-    contactRepo.remove(publicKey);
-    _conversations.remove(publicKey);
-    _pendingInvitations.remove(publicKey);
+  Future<void> acceptRequest(String publicKey) async {
+    await node.acceptFriendRequest(publicKey);
     notifyListeners();
   }
+
+  Future<void> declineRequest(String publicKey) async {
+    await node.declineFriendRequest(publicKey);
+    notifyListeners();
+  }
+
+  Future<void> cancelRequest(String publicKey) async {
+    await node.cancelFriendRequest(publicKey);
+    notifyListeners();
+  }
+
+  void removeFriend(String publicKey) {
+    node.removeFriend(publicKey);
+    notifyListeners();
+  }
+
+  // ---------------- Chat ----------------
+
+  List<Map<String, dynamic>> messagesWith(String peerId) =>
+      _conversations.putIfAbsent(peerId, () => node.messengerKernel.historyWith(peerId));
 
   void send(String peerId, String text) {
     if (text.trim().isEmpty) return;
@@ -132,6 +221,7 @@ class ChatProvider extends ChangeNotifier {
     _sub?.cancel();
     _networkSub?.cancel();
     _channelSub?.cancel();
+    _friendSub?.cancel();
     super.dispose();
   }
 }

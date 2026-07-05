@@ -16,11 +16,22 @@ class ChatScreen extends StatefulWidget {
 class _ChatScreenState extends State<ChatScreen> {
   final controller = TextEditingController();
   final scrollCtrl = ScrollController();
+  late ChatProvider _chatProvider;
+
+  @override
+  void initState() {
+    super.initState();
+    _chatProvider = context.read<ChatProvider>();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _chatProvider.setActivePeer(widget.peerId);
+    });
+  }
 
   @override
   void dispose() {
     controller.dispose();
     scrollCtrl.dispose();
+    _chatProvider.setActivePeer(null);
     super.dispose();
   }
 
