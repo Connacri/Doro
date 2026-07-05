@@ -171,7 +171,37 @@ class _WalletScreenState extends State<WalletScreen> {
                 leading: Icon(isGenesis ? Icons.stars : Icons.account_balance_wallet, color: isGenesis ? Colors.amber : null),
                 title: Text(w.address, style: const TextStyle(fontFamily: 'monospace', fontSize: 13), overflow: TextOverflow.ellipsis),
                 subtitle: Text(formatDoro(w.balance), style: TextStyle(fontWeight: FontWeight.bold, color: isGenesis ? Colors.amber[800] : null)),
-                trailing: isGenesis ? const Chip(label: Text("Fondateur"), visualDensity: VisualDensity.compact) : null,
+                trailing: isGenesis
+                    ? const Chip(label: Text("Fondateur"), visualDensity: VisualDensity.compact)
+                    : IconButton(
+                        icon: const Icon(Icons.delete_outline, color: Colors.redAccent),
+                        tooltip: "Supprimer le wallet",
+                        onPressed: () async {
+                          final confirm = await showDialog<bool>(
+                            context: context,
+                            builder: (ctx) => AlertDialog(
+                              title: const Text("Réinitialiser l'app ?"),
+                              content: const Text(
+                                "Cela supprime TOUTES les données locales : wallet, "
+                                "clé privée, historique des transactions. Assure-toi "
+                                "d'avoir sauvegardé ta seed avant.",
+                              ),
+                              actions: [
+                                TextButton(
+                                    onPressed: () => Navigator.of(ctx).pop(false),
+                                    child: const Text("Annuler")),
+                                FilledButton(
+                                    style: FilledButton.styleFrom(backgroundColor: Colors.redAccent),
+                                    onPressed: () => Navigator.of(ctx).pop(true),
+                                    child: const Text("Tout supprimer")),
+                              ],
+                            ),
+                          );
+                          if (confirm == true && context.mounted) {
+                            await context.read<WalletProvider>().resetAll();
+                          }
+                        },
+                      ),
               );
             }),
             const Divider(),
