@@ -29,7 +29,7 @@ class DoroApp extends StatefulWidget {
   State<DoroApp> createState() => _DoroAppState();
 }
 
-class _DoroAppState extends State<DoroApp> {
+class _DoroAppState extends State<DoroApp> with WidgetsBindingObserver {
   P2PNode? _node;
   late final WalletRepository _walletRepo;
   late final ContactRepository _contactRepo;
@@ -37,10 +37,30 @@ class _DoroAppState extends State<DoroApp> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _walletRepo = WalletRepository(widget.db);
     _contactRepo = ContactRepository(widget.db);
     if (!Platform.environment.containsKey('FLUTTER_TEST')) {
       _initNode();
+    }
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _node?.stop();
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    final node = _node;
+    if (node == null) return;
+    if (state == AppLifecycleState.resumed) {
+      Logger.info("App resumed — checking signaling connection");
+      node.reconnectSignaling();
+    } else if (state == AppLifecycleState.paused) {
+      Logger.info("App paused — keeping node alive in background");
     }
   }
 
@@ -56,12 +76,6 @@ class _DoroAppState extends State<DoroApp> {
     } catch (e) {
       Logger.error("Bootstrap failed: $e");
     }
-  }
-
-  @override
-  void dispose() {
-    _node?.stop();
-    super.dispose();
   }
 
   @override

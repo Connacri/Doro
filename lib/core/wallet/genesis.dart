@@ -21,7 +21,7 @@ class Genesis {
   /// Adresse du wallet fondateur/trésorerie (Ramzi). Dérivée par
   /// sha256(clé publique) — voir AddressGenerator.generate().
   static const String genesisAddress =
-      "0x645e475e48473f792279831a4691f454417eada38925e9ddebb492622c20baa3";
+      "0xcd8aaa30d8c1b0ef9d419057b34a3f3045c0aa70f955131a1fa3e477670f137e";
 
   /// Adresse "émettrice" de la transaction genesis — représente le réseau
   /// lui-même (mint). Aucune clé privée ne correspond à cette adresse,

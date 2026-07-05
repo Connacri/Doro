@@ -20,59 +20,63 @@ class HomeScreen extends StatelessWidget {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      builder: (ctx) => Padding(
-        padding: EdgeInsets.only(
-          left: 16, right: 16, top: 16,
-          bottom: 16 + MediaQuery.of(ctx).viewInsets.bottom,
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(side == OrderSide.sell ? "Vendre des DORO" : "Publier une demande d'achat",
-                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 12),
-            TextField(
-              controller: amountCtrl,
-              decoration: const InputDecoration(labelText: "Quantité (DORO)"),
-              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+      builder: (ctx) {
+        return SafeArea(
+          child: Padding(
+            padding: EdgeInsets.only(
+              left: 16, right: 16, top: 16,
+              bottom: 16 + MediaQuery.of(ctx).viewInsets.bottom,
             ),
-            const SizedBox(height: 8),
-            TextField(
-              controller: priceCtrl,
-              decoration: const InputDecoration(labelText: "Prix par DORO (USD)"),
-              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(side == OrderSide.sell ? "Vendre des DORO" : "Publier une demande d'achat",
+                    style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: amountCtrl,
+                  decoration: const InputDecoration(labelText: "Quantité (DORO)"),
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                ),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: priceCtrl,
+                  decoration: const InputDecoration(labelText: "Prix par DORO (USD)"),
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                ),
+                const SizedBox(height: 16),
+                FilledButton(
+                  onPressed: () async {
+                    final amountStr = amountCtrl.text.trim();
+                    final priceStr = priceCtrl.text.trim();
+                    if (amountStr.isEmpty || priceStr.isEmpty) return;
+                    final navigator = Navigator.of(ctx);
+                    final scaffoldMessenger = ScaffoldMessenger.of(context);
+                    final parsedAmount = amountStr.toLocaleDouble();
+                    final parsedPrice = priceStr.toLocaleDouble();
+                    if (parsedAmount == null || parsedAmount <= 0 || parsedPrice == null || parsedPrice <= 0) {
+                      scaffoldMessenger.showSnackBar(
+                        const SnackBar(content: Text("Quantité ou prix invalide")),
+                      );
+                      return;
+                    }
+                    final amount = BigInt.from(parsedAmount * 1e18);
+                    final price = BigInt.from((parsedPrice * 100).round());
+                    final market = context.read<MarketProvider>();
+                    final order = await market.publishOrder(side: side, amount: amount, pricePerUnit: price);
+                    navigator.pop();
+                    scaffoldMessenger.showSnackBar(SnackBar(
+                      content: Text(order != null ? "Ordre publié" : (market.lastError ?? "Échec")),
+                    ));
+                  },
+                  child: const Text("Publier"),
+                ),
+              ],
             ),
-            const SizedBox(height: 16),
-            FilledButton(
-              onPressed: () async {
-                final amountStr = amountCtrl.text.trim();
-                final priceStr = priceCtrl.text.trim();
-                if (amountStr.isEmpty || priceStr.isEmpty) return;
-                final navigator = Navigator.of(ctx);
-                final scaffoldMessenger = ScaffoldMessenger.of(context);
-                final parsedAmount = amountStr.toLocaleDouble();
-                final parsedPrice = priceStr.toLocaleDouble();
-                if (parsedAmount == null || parsedAmount <= 0 || parsedPrice == null || parsedPrice <= 0) {
-                  scaffoldMessenger.showSnackBar(
-                    const SnackBar(content: Text("Quantité ou prix invalide")),
-                  );
-                  return;
-                }
-                final amount = BigInt.from(parsedAmount * 1e18);
-                final price = BigInt.from((parsedPrice * 100).round());
-                final market = context.read<MarketProvider>();
-                final order = await market.publishOrder(side: side, amount: amount, pricePerUnit: price);
-                navigator.pop();
-                scaffoldMessenger.showSnackBar(SnackBar(
-                  content: Text(order != null ? "Ordre publié" : (market.lastError ?? "Échec")),
-                ));
-              },
-              child: const Text("Publier"),
-            ),
-          ],
-        ),
-      ),
+          ),
+        );
+      },
     );
   }
 

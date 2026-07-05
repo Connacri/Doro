@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'wallet_provider.dart';
+import 'wallet_screen.dart' show formatDoro;
 import '../../core/wallet/token_config.dart';
 import '../../shared/extensions/string_ext.dart';
 
@@ -15,12 +16,35 @@ class _SendScreenState extends State<SendScreen> {
   final toCtrl = TextEditingController();
   final amountCtrl = TextEditingController();
   bool _sending = false;
+  BigInt _remaining = BigInt.zero;
+  BigInt _balance = BigInt.zero;
+
+  @override
+  void initState() {
+    super.initState();
+    amountCtrl.addListener(_updateRemaining);
+  }
 
   @override
   void dispose() {
+    amountCtrl.removeListener(_updateRemaining);
     toCtrl.dispose();
     amountCtrl.dispose();
     super.dispose();
+  }
+
+  void _updateRemaining() {
+    final provider = context.read<WalletProvider>();
+    final balance = provider.wallets.isNotEmpty ? provider.wallets.first.balance : BigInt.zero;
+    final amountStr = amountCtrl.text.trim();
+    final humanAmount = amountStr.toLocaleDouble();
+    final amount = humanAmount != null && humanAmount > 0
+        ? BigInt.from(humanAmount * 1e18)
+        : BigInt.zero;
+    setState(() {
+      _balance = balance;
+      _remaining = balance - amount;
+    });
   }
 
   Future<void> _send() async {
@@ -76,11 +100,44 @@ class _SendScreenState extends State<SendScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final overspend = _remaining < BigInt.zero;
+
     return Padding(
       padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Theme.of(context).colorScheme.surfaceContainerHighest,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Row(
+              children: [
+                const Text("Solde : ", style: TextStyle(fontSize: 13)),
+                Text(formatDoro(_balance), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+              ],
+            ),
+          ),
+          if (amountCtrl.text.isNotEmpty) ...[
+            const SizedBox(height: 4),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: overspend ? Colors.red.shade900.withValues(alpha: 0.3) : Colors.green.shade900.withValues(alpha: 0.2),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(
+                children: [
+                  Text(overspend ? "Dépassement : " : "Restant : ", style: TextStyle(fontSize: 13, color: overspend ? Colors.redAccent : Colors.greenAccent)),
+                  Text(formatDoro(overspend ? -_remaining : _remaining),
+                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: overspend ? Colors.redAccent : Colors.greenAccent)),
+                ],
+              ),
+            ),
+          ],
+          const SizedBox(height: 12),
           TextField(
             controller: toCtrl,
             decoration: const InputDecoration(
@@ -99,14 +156,14 @@ class _SendScreenState extends State<SendScreen> {
           ),
           const SizedBox(height: 16),
           ElevatedButton(
-            onPressed: _sending ? null : _send,
+            onPressed: _sending || overspend ? null : _send,
             child: _sending
                 ? const SizedBox(
                     width: 20,
                     height: 20,
                     child: CircularProgressIndicator(strokeWidth: 2),
                   )
-                : const Text("Envoyer"),
+                : Text(overspend ? "Montant trop élevé" : "Envoyer"),
           ),
         ],
       ),

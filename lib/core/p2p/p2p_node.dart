@@ -201,4 +201,12 @@ class P2PNode {
     _channelReadyController.close();
     marketKernel.dispose();
   }
+
+  void reconnectSignaling() {
+    if (_signaling == null) return;
+    if (!isSignalingConnected) {
+      Logger.info("Signaling disconnected — forcing immediate reconnection");
+      _signaling!.retryNow();
+    }
+  }
 }

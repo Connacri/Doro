@@ -10,6 +10,8 @@ class SignalingClient {
   bool _isClosed = false;
   bool _wasConnected = false;
 
+  Timer? _reconnectTimer;
+
   Function(Map<String, dynamic>)? onMessage;
   Function()? onConnect;
   Function()? onDisconnect;
@@ -71,7 +73,15 @@ class SignalingClient {
     _channel?.sink.close();
 
     Logger.info("Reconnecting to signaling server in 5 seconds...");
-    Timer(const Duration(seconds: 5), _connect);
+    _reconnectTimer = Timer(const Duration(seconds: 5), _connect);
+  }
+
+  void retryNow() {
+    if (_isClosed) return;
+    _reconnectTimer?.cancel();
+    _subscription?.cancel();
+    _channel?.sink.close();
+    _connect();
   }
 
   void send(Map<String, dynamic> msg) {
@@ -92,6 +102,7 @@ class SignalingClient {
       _wasConnected = false;
       onDisconnect?.call();
     }
+    _reconnectTimer?.cancel();
     _subscription?.cancel();
     _channel?.sink.close();
   }

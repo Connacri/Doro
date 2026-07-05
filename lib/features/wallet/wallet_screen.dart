@@ -70,13 +70,6 @@ class _WalletScreenState extends State<WalletScreen> {
     );
   }
 
-  Future<void> _createWallet(BuildContext context) async {
-    final provider = context.read<WalletProvider>();
-    final result = await provider.createWallet();
-    if (!context.mounted) return;
-    await _showBackupDialog(context, result.seedHex, auto: false);
-  }
-
   Future<void> _importWallet(BuildContext context) async {
     final controller = TextEditingController();
     final seed = await showDialog<String>(
@@ -152,11 +145,6 @@ class _WalletScreenState extends State<WalletScreen> {
         actions: [
           IconButton(icon: const Icon(Icons.key), tooltip: "Importer un wallet", onPressed: () => _importWallet(context)),
         ],
-      ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => _createWallet(context),
-        icon: const Icon(Icons.add),
-        label: const Text("Créer un wallet"),
       ),
       body: SafeArea(
         child: ListView(
