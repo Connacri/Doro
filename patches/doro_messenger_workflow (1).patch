@@ -1250,10 +1250,10 @@ index 4f73856..82b781e 100644
    }
  
 diff --git a/lib/features/chat/amis_screen.dart b/lib/features/chat/amis_screen.dart
-index 0efa8f1..c59f720 100644
+index 0efa8f1..ac438dc 100644
 --- a/lib/features/chat/amis_screen.dart
 +++ b/lib/features/chat/amis_screen.dart
-@@ -3,39 +3,110 @@ import 'package:flutter/material.dart';
+@@ -3,39 +3,142 @@ import 'package:flutter/material.dart';
  import 'package:provider/provider.dart';
  import 'chat_provider.dart';
  import 'chat_screen.dart';
@@ -1297,6 +1297,12 @@ index 0efa8f1..c59f720 100644
 +            onTap: () => Navigator.pop(ctx, "paste"),
 +          ),
 +          ListTile(
++            leading: const Icon(Icons.chat_bubble_outline),
++            title: const Text("Discuter sans ajouter en ami"),
++            subtitle: const Text("Le chat fonctionne même sans demande acceptée"),
++            onTap: () => Navigator.pop(ctx, "chat_only"),
++          ),
++          ListTile(
 +            leading: const Icon(Icons.badge_outlined),
 +            title: const Text("Afficher mon QR / mon ID"),
 +            onTap: () => Navigator.pop(ctx, "myid"),
@@ -1317,6 +1323,32 @@ index 0efa8f1..c59f720 100644
 +        await chat.sendFriendRequest(scanned.trim());
 +        if (context.mounted) {
 +          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Demande d'ami envoyée")));
++        }
++      }
++      return;
++    }
++
++    if (result == "chat_only" && context.mounted) {
++      final controller = TextEditingController();
++      final key = await showDialog<String>(
++        context: context,
++        builder: (ctx) => AlertDialog(
++          title: const Text("Discuter sans ajouter en ami"),
++          content: TextField(
++            controller: controller,
++            autofocus: true,
++            decoration: const InputDecoration(labelText: "Clé publique", hintText: "0x..."),
++          ),
++          actions: [
++            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("Annuler")),
++            FilledButton(onPressed: () => Navigator.pop(ctx, controller.text.trim()), child: const Text("Ouvrir la discussion")),
+           ],
+         ),
++      );
++      if (key != null && key.isNotEmpty && context.mounted) {
++        await chat.startChat(key);
++        if (context.mounted) {
++          Navigator.push(context, MaterialPageRoute(builder: (_) => ChatScreen(peerId: key, peerName: key.length > 12 ? key.substring(0, 12) : key)));
 +        }
 +      }
 +      return;
@@ -1352,8 +1384,8 @@ index 0efa8f1..c59f720 100644
 +              },
 +              child: const Text("Envoyer la demande"),
 +            ),
-           ],
-         ),
++          ],
++        ),
 +      );
 +    }
 +  }
@@ -1385,7 +1417,7 @@ index 0efa8f1..c59f720 100644
            ),
          ],
        ),
-@@ -45,43 +116,99 @@ class AmisScreen extends StatelessWidget {
+@@ -45,43 +148,99 @@ class AmisScreen extends StatelessWidget {
    @override
    Widget build(BuildContext context) {
      final provider = context.watch<ChatProvider>();
@@ -1521,7 +1553,7 @@ index 0efa8f1..c59f720 100644
 +  String _short(String key) => key.length > 14 ? "${key.substring(0, 8)}…${key.substring(key.length - 4)}" : key;
 +}
 diff --git a/lib/features/chat/chat_provider.dart b/lib/features/chat/chat_provider.dart
-index 7c4e0b3..eec127b 100644
+index 7c4e0b3..870d60c 100644
 --- a/lib/features/chat/chat_provider.dart
 +++ b/lib/features/chat/chat_provider.dart
 @@ -2,41 +2,67 @@ import 'dart:async';
@@ -1600,7 +1632,7 @@ index 7c4e0b3..eec127b 100644
        if (hasListeners) notifyListeners();
      });
  
-@@ -45,39 +71,102 @@ class ChatProvider extends ChangeNotifier {
+@@ -45,39 +71,127 @@ class ChatProvider extends ChangeNotifier {
      });
    }
  
@@ -1657,13 +1689,37 @@ index 7c4e0b3..eec127b 100644
 +  }
  
 -  Future<void> addContact(String publicKey, {String? name}) async {
--    final key = publicKey.trim();
--    if (key.isEmpty || key == node.nodeId) return;
 +  String _shortId(String key) => key.length > 14 ? "${key.substring(0, 8)}…${key.substring(key.length - 4)}" : key;
++
++  // ---------------- Amis : actions ----------------
++
++  /// Prépare une discussion avec `publicKey` SANS envoyer de demande
++  /// d'ami — la messagerie n'a jamais exigé d'être ami pour fonctionner
++  /// (voir MessengerKernel._handleIncomingChat/sendPrivateChat, aucun
++  /// des deux ne vérifie `isFriend`). Ce que fait cette méthode, c'est
++  /// uniquement tenter la connexion WebRTC si elle n'existe pas encore —
++  /// un prérequis technique P2P incontournable, pas une permission :
++  /// même deux inconnus ont besoin d'un canal WebRTC établi une fois
++  /// (ICE/SDP via le serveur de signalisation) avant de pouvoir
++  /// s'échanger quoi que ce soit. Si le pair est hors ligne, le message
++  /// partira quand même dès qu'il reviendra (file d'attente déjà en
++  /// place) — aucun rejet, aucune notion d'acceptation ici.
++  Future<void> startChat(String publicKey) async {
+     final key = publicKey.trim();
+     if (key.isEmpty || key == node.nodeId) return;
++    if (!isOnline(key)) {
++      try {
++        await node.connectPeer(key);
++      } catch (_) {
++        // Pas grave si hors ligne pour l'instant — les messages partiront
++        // dès la connexion, comme pour n'importe quel autre pair.
++      }
++    }
++    notifyListeners();
++  }
  
 -    contactRepo.add(key, name: name);
-+  // ---------------- Amis : actions ----------------
- 
+-
 -    if (isOnline(key)) {
 -      node.sendInvitation(key);
 -    } else {
@@ -1693,9 +1749,9 @@ index 7c4e0b3..eec127b 100644
 -    _pendingInvitations.remove(publicKey);
 +  Future<void> acceptRequest(String publicKey) async {
 +    await node.acceptFriendRequest(publicKey);
-+    notifyListeners();
-+  }
-+
+     notifyListeners();
+   }
+ 
 +  Future<void> declineRequest(String publicKey) async {
 +    await node.declineFriendRequest(publicKey);
 +    notifyListeners();
@@ -1703,9 +1759,9 @@ index 7c4e0b3..eec127b 100644
 +
 +  Future<void> cancelRequest(String publicKey) async {
 +    await node.cancelFriendRequest(publicKey);
-     notifyListeners();
-   }
- 
++    notifyListeners();
++  }
++
 +  void removeFriend(String publicKey) {
 +    node.removeFriend(publicKey);
 +    notifyListeners();
@@ -1719,7 +1775,20 @@ index 7c4e0b3..eec127b 100644
    void send(String peerId, String text) {
      if (text.trim().isEmpty) return;
      messagesWith(peerId).add({
-@@ -98,12 +187,12 @@ class ChatProvider extends ChangeNotifier {
+@@ -94,16 +208,25 @@ class ChatProvider extends ChangeNotifier {
+       // Ne devrait plus arriver : MessengerKernel met le message en
+       // file d'attente au lieu de le perdre si le pair est hors ligne.
+     }
++    if (!isOnline(peerId)) {
++      // Le message est en file d'attente (voir MessengerKernel._outbox)
++      // mais sans ça, personne ne retente activement la connexion — le
++      // message attendrait indéfiniment que LUI se reconnecte à MOI en
++      // premier. On tente nous-mêmes en arrière-plan, sans bloquer l'UI
++      // ni faire échouer l'envoi si le serveur de signaling est
++      // injoignable pour l'instant.
++      node.connectPeer(peerId).catchError((_) {});
++    }
+   }
  
    Future<bool> sendCrypto(String toAddress, BigInt amount) async {
      if (walletProvider == null || walletProvider!.wallets.isEmpty) return false;
@@ -1734,7 +1803,7 @@ index 7c4e0b3..eec127b 100644
        messagesWith(toAddress).add({
          "type": "tx_info",
          "from": node.nodeId,
-@@ -112,7 +201,7 @@ class ChatProvider extends ChangeNotifier {
+@@ -112,7 +235,7 @@ class ChatProvider extends ChangeNotifier {
        });
        notifyListeners();
      }
@@ -1743,7 +1812,7 @@ index 7c4e0b3..eec127b 100644
    }
  
    void clearHistory(String peerId) {
-@@ -132,6 +221,7 @@ class ChatProvider extends ChangeNotifier {
+@@ -132,6 +255,7 @@ class ChatProvider extends ChangeNotifier {
      _sub?.cancel();
      _networkSub?.cancel();
      _channelSub?.cancel();
