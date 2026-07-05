@@ -1,474 +1,1096 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Doro — Bac à sable du ledger</title>
-    <style>
-        :root{
-          --bg:#0F0F1A; --surface:#1A1A2E; --surface2:#20213a;
-          --primary:#6C5CE7; --primary-dim:#4a3fb0;
-          --success:#00D084; --error:#FF4D4D; --warn:#F5A623;
-          --text:#ffffff; --muted:#9a9ab0;
-          --mono:'JetBrains Mono','SF Mono',Consolas,monospace;
-        }
-        *{box-sizing:border-box;}
-        body{
-          margin:0; background:var(--bg); color:var(--text);
-          font-family:'Inter',-apple-system,sans-serif;
-          min-height:100vh;
-        }
-        header{
-          padding:20px 24px; border-bottom:1px solid #ffffff12;
-          display:flex; align-items:baseline; gap:12px; flex-wrap:wrap;
-        }
-        header h1{ font-size:18px; margin:0; font-weight:700; letter-spacing:-.2px; }
-        header .tag{
-          font-family:var(--mono); font-size:11px; color:var(--muted);
-          background:var(--surface); padding:3px 8px; border-radius:5px;
-          border:1px solid #ffffff10;
-        }
-        .warn-banner{
-          background:linear-gradient(90deg,#F5A62322,#F5A62308);
-          border-bottom:1px solid #F5A62333;
-          color:#F5A623; font-size:12.5px; padding:9px 24px;
-          font-family:var(--mono);
-        }
-        main{
-          display:grid; grid-template-columns: 300px 1fr 380px;
-          gap:1px; background:#ffffff10;
-        }
-        @media (max-width: 980px){ main{grid-template-columns:1fr;} }
-        section{ background:var(--bg); padding:18px; }
-        h2{
-          font-size:12px; text-transform:uppercase; letter-spacing:.08em;
-          color:var(--muted); margin:0 0 14px 0; font-weight:600;
-        }
-        .card{
-          background:var(--surface); border-radius:10px; padding:12px 14px;
-          margin-bottom:10px; border:1px solid #ffffff08;
-        }
-        .user-row{
-          display:flex; justify-content:space-between; align-items:center;
-          padding:8px 0; border-bottom:1px solid #ffffff08; font-size:13px;
-        }
-        .user-row:last-child{border-bottom:none;}
-        .user-name{ font-weight:600; }
-        .user-addr{ font-family:var(--mono); font-size:10.5px; color:var(--muted); }
-        .balance{ font-family:var(--mono); font-weight:700; color:var(--success); }
-        button{
-          background:var(--primary); color:#fff; border:none; border-radius:7px;
-          padding:9px 14px; font-size:13px; font-weight:600; cursor:pointer;
-          transition:transform .1s, background .15s; width:100%;
-        }
-        button:hover{ background:#7d6ef0; }
-        button:active{ transform:scale(.98); }
-        button.secondary{ background:var(--surface2); color:var(--text); border:1px solid #ffffff15; }
-        button.secondary:hover{ background:#2a2b4a; }
-        button.danger{ background:#3a1f1f; color:var(--error); border:1px solid #FF4D4D33; }
-        button:disabled{ opacity:.35; cursor:not-allowed; }
-        input, select{
-          width:100%; background:var(--surface2); border:1px solid #ffffff15;
-          color:var(--text); border-radius:7px; padding:8px 10px; font-size:13px;
-          margin-bottom:8px; font-family:inherit;
-        }
-        label{ font-size:11.5px; color:var(--muted); display:block; margin-bottom:4px; }
-        .field{ margin-bottom:12px; }
-        .scenario-btn{ margin-bottom:8px; text-align:left; }
-        .scenario-btn small{ display:block; font-weight:400; opacity:.75; font-size:11px; margin-top:2px; }
-        #log{
-          font-family:var(--mono); font-size:12px; line-height:1.6;
-          max-height:340px; overflow-y:auto; background:#000000a0;
-          border-radius:8px; padding:10px 12px; border:1px solid #ffffff08;
-        }
-        .log-line{ padding:3px 0; border-bottom:1px solid #ffffff06; }
-        .ok{ color:var(--success); }
-        .rej{ color:var(--error); }
-        .pend{ color:var(--warn); }
-        #ledger-table{ width:100%; border-collapse:collapse; font-size:12px; font-family:var(--mono); }
-        #ledger-table th{
-          text-align:left; color:var(--muted); font-weight:600; font-size:10.5px;
-          text-transform:uppercase; padding:6px 8px; border-bottom:1px solid #ffffff15;
-        }
-        #ledger-table td{ padding:6px 8px; border-bottom:1px solid #ffffff08; }
-        .pill{ padding:2px 7px; border-radius:20px; font-size:10px; font-weight:700; }
-        .pill.send{ background:#6C5CE722; color:#a89bff; }
-        .pill.receive{ background:#00D08422; color:var(--success); }
-        .pill.mint{ background:#F5A62322; color:var(--warn); }
-        .divider{ height:1px; background:#ffffff10; margin:16px 0; }
-        .toggle-row{ display:flex; align-items:center; gap:8px; font-size:12.5px; color:var(--muted); margin-bottom:10px; }
-        .empty{ color:var(--muted); font-size:12px; text-align:center; padding:20px 0; }
-    </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Doro — Simulateur Réseau Multi-Nœuds</title>
+<style>
+:root{--bg:#0F0F1A;--surface:#1A1A2E;--surface2:#20213a;--primary:#6C5CE7;--primary-dim:#4a3fb0;--success:#00D084;--error:#FF4D4D;--warn:#F5A623;--text:#ffffff;--muted:#9a9ab0;--mono:'JetBrains Mono','SF Mono',Consolas,monospace;}
+*{box-sizing:border-box;}
+body{margin:0;background:var(--bg);color:var(--text);font-family:'Inter',-apple-system,sans-serif;min-height:100vh;}
+header{padding:16px 20px;border-bottom:1px solid #ffffff12;display:flex;align-items:center;gap:12px;flex-wrap:wrap;}
+header h1{font-size:16px;margin:0;font-weight:700;}
+header .tag{font-family:var(--mono);font-size:10px;color:var(--muted);background:var(--surface);padding:2px 7px;border-radius:4px;border:1px solid #ffffff10;}
+.warn-banner{background:linear-gradient(90deg,#F5A62322,#F5A62308);border-bottom:1px solid #F5A62333;color:#F5A623;font-size:11.5px;padding:7px 20px;font-family:var(--mono);}
+main{display:grid;grid-template-columns:300px 1fr 380px;gap:1px;background:#ffffff10;}
+@media(max-width:1100px){main{grid-template-columns:1fr;}}
+section{background:var(--bg);padding:14px;overflow-y:auto;max-height:calc(100vh - 110px);}
+h2{font-size:11px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin:0 0 10px 0;font-weight:600;}
+h3{font-size:12px;color:var(--text);margin:8px 0 6px 0;font-weight:600;}
+.card{background:var(--surface);border-radius:8px;padding:10px 12px;margin-bottom:8px;border:1px solid #ffffff08;}
+.user-row{display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid #ffffff08;font-size:13px;cursor:pointer;transition:background .12s;}
+.user-row:hover{background:var(--surface2);border-radius:4px;}
+.user-row:last-child{border-bottom:none;}
+.user-name{font-weight:600;}
+.user-addr{font-family:var(--mono);font-size:10px;color:var(--muted);}
+.balance{font-family:var(--mono);font-weight:700;color:var(--success);}
+button{background:var(--primary);color:#fff;border:none;border-radius:6px;padding:7px 12px;font-size:12px;font-weight:600;cursor:pointer;transition:transform .1s,background .15s;}
+button:hover{background:#7d6ef0;}
+button:active{transform:scale(.97);}
+button.small{padding:4px 8px;font-size:11px;width:auto;}
+button.secondary{background:var(--surface2);color:var(--text);border:1px solid #ffffff15;}
+button.secondary:hover{background:#2a2b4a;}
+button.danger{background:#3a1f1f;color:var(--error);border:1px solid #FF4D4D33;}
+button:disabled{opacity:.35;cursor:not-allowed;}
+input,select{width:100%;background:var(--surface2);border:1px solid #ffffff15;color:var(--text);border-radius:6px;padding:6px 9px;font-size:12px;margin-bottom:6px;font-family:inherit;}
+label{font-size:11px;color:var(--muted);display:block;margin-bottom:3px;}
+.field{margin-bottom:8px;}
+.toggle-row{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);margin-bottom:6px;}
+.toggle-row input[type=checkbox]{width:auto;margin:0;accent-color:var(--primary);}
+#log{font-family:var(--mono);font-size:11px;line-height:1.5;max-height:260px;overflow-y:auto;background:#000000a0;border-radius:6px;padding:8px 10px;border:1px solid #ffffff08;}
+.log-line{padding:2px 0;border-bottom:1px solid #ffffff06;}
+.ok{color:var(--success);}
+.rej{color:var(--error);}
+.pend{color:var(--warn);}
+.info{color:var(--muted);}
+table{width:100%;border-collapse:collapse;font-size:11px;font-family:var(--mono);}
+th{text-align:left;color:var(--muted);font-weight:600;font-size:10px;text-transform:uppercase;padding:4px 6px;border-bottom:1px solid #ffffff15;}
+td{padding:4px 6px;border-bottom:1px solid #ffffff08;}
+.pill{padding:1px 6px;border-radius:12px;font-size:9px;font-weight:700;}
+.pill.send{background:#6C5CE722;color:#a89bff;}
+.pill.receive{background:#00D08422;color:var(--success);}
+.pill.mint{background:#F5A62322;color:var(--warn);}
+.pill.buy{background:#00D08422;color:var(--success);}
+.pill.sell{background:#FF4D4D22;color:var(--error);}
+.pill.trade{background:#6C5CE722;color:#a89bff;}
+.divider{height:1px;background:#ffffff10;margin:12px 0;}
+.empty{color:var(--muted);font-size:11px;text-align:center;padding:12px 0;}
+.badge{display:inline-block;padding:1px 6px;border-radius:10px;font-size:9px;font-weight:700;}
+.badge.online{background:#00D08422;color:var(--success);border:1px solid #00D08444;}
+.badge.offline{background:#FF4D4D22;color:var(--error);border:1px solid #FF4D4D44;}
+.conn-count{font-size:10px;color:var(--muted);}
+.node-view-bar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px;}
+.metrics{display:flex;gap:12px;font-family:var(--mono);font-size:10px;color:var(--muted);flex-wrap:wrap;}
+.metrics span{background:var(--surface2);padding:3px 8px;border-radius:4px;}
+.slider-row{display:flex;align-items:center;gap:8px;font-size:11px;color:var(--muted);}
+.slider-row input[type=range]{flex:1;accent-color:var(--primary);}
+.action-bar{display:flex;gap:6px;flex-wrap:wrap;margin:6px 0;}
+.action-bar button{width:auto;flex:1;min-width:80px;}
+.msg-bubble{padding:4px 8px;margin:2px 0;background:var(--surface2);border-radius:6px;font-size:11px;border-left:2px solid var(--primary);}
+.msg-from{font-size:9px;color:var(--muted);}
+</style>
 </head>
 <body>
 
 <header>
-    <h1>🔗 Doro — Bac à sable du ledger</h1>
-    <span class="tag">JS · logique seule</span>
-    <span class="tag">pas de vraie crypto</span>
-    <span class="tag">pas de vrai P2P</span>
+  <h1>🔗 Doro — Simulateur Réseau Multi-Nœuds</h1>
+  <span class="tag">JS · logique seule</span>
+  <span class="tag">chaque pair a son propre ledger</span>
+  <span class="tag">gossip · chaos · auto</span>
 </header>
 <div class="warn-banner">
-    ⚠️ Ceci reproduit fidèlement les règles de DagEngine/LedgerBalances (send/receive, nonce, genesis unique, file d'attente des receive orphelins) — mais en JS, sans Ed25519 réel ni WebRTC. Sert à valider le comportement vite ; le vrai test reste à faire sur ton app.
+  ⚠️ Chaque nœud possède <b>sa propre copie du ledger</b>, ses propres soldes, sa propre file de messages.
+  Le réseau propage les données par gossip. Active le chaos pour voir les divergences apparaître.
 </div>
 
 <main>
-    <!-- COLONNE 1 : utilisateurs -->
-    <section>
-        <h2>Utilisateurs de test</h2>
-        <div id="users-list"></div>
-        <div class="field" style="margin-top:12px;">
-            <label>Nom du nouvel utilisateur</label>
-            <input id="new-user-name" placeholder="ex: Alice">
-            <button onclick="createUser()">+ Créer un utilisateur</button>
-        </div>
-        <div class="divider"></div>
-        <h2>Trésorerie / Genesis</h2>
-        <div class="field">
-            <label>Compte à créditer de l'allocation totale</label>
-            <select id="genesis-target"></select>
-            <button class="secondary" id="mint-btn" onclick="mintGenesis()">🌱 Miner la genesis (une fois)</button>
-        </div>
-    </section>
+  <!-- COLONNE 1 : Nœuds & Réseau -->
+  <section id="col-nodes">
+    <h2>Nœuds du réseau</h2>
+    <div id="nodes-list"></div>
+    <div class="field">
+      <label>Créer un nœud</label>
+      <div style="display:flex;gap:6px;">
+        <input id="new-node-name" placeholder="Nom du nœud" style="margin:0;flex:1;">
+        <button class="small" onclick="createNode()" style="width:auto;">+</button>
+      </div>
+    </div>
 
-    <!-- COLONNE 2 : actions -->
-    <section>
-        <h2>Envoyer un paiement</h2>
-        <div class="card">
-            <div class="field">
-                <label>De</label>
-                <select id="send-from"></select>
-            </div>
-            <div class="field">
-                <label>Vers</label>
-                <select id="send-to"></select>
-            </div>
-            <div class="field">
-                <label>Montant</label>
-                <input id="send-amount" type="number" value="10" min="1">
-            </div>
-            <div class="toggle-row">
-                <input type="checkbox" id="manual-mode" style="width:auto;margin:0;">
-                <label style="margin:0;" for="manual-mode">Mode manuel — ne pas auto-générer le <code>receive</code> (pour tester le retard réseau)</label>
-            </div>
-            <button onclick="doSend()">Envoyer (créer un bloc <code>send</code>)</button>
-        </div>
+    <div class="divider"></div>
+    <h2>Chaos Engine</h2>
+    <div class="card">
+      <div class="toggle-row"><input type="checkbox" id="chaos-toggle" onchange="toggleChaos()"><label for="chaos-toggle">Activer le chaos</label></div>
+      <div class="slider-row"><label>Déconnexion</label><input type="range" id="chaos-disc" min="0" max="20" value="3" oninput="updateChaosLabel('chaos-disc-label',this.value)"><span id="chaos-disc-label">3%</span></div>
+      <div class="slider-row"><label>Perte messages</label><input type="range" id="chaos-loss" min="0" max="40" value="5" oninput="updateChaosLabel('chaos-loss-label',this.value)"><span id="chaos-loss-label">5%</span></div>
+      <div class="slider-row"><label>Latence max</label><input type="range" id="chaos-lat" min="0" max="3000" value="300" step="100" oninput="document.getElementById('chaos-lat-label').textContent=this.value+'ms'"><span id="chaos-lat-label">300ms</span></div>
+      <div class="slider-row"><label>Partitions</label><input type="range" id="chaos-part" min="0" max="15" value="0" oninput="updateChaosLabel('chaos-part-label',this.value)"><span id="chaos-part-label">0%</span></div>
+    </div>
 
-        <div class="divider"></div>
-        <h2>Scénarios guidés</h2>
-        <button class="secondary scenario-btn" onclick="scenarioReplay()">
-            ↻ Tenter un rejeu (même nonce)
-            <small>Renvoie exactement la même tx déjà acceptée → rejectedReplay</small>
-        </button>
-        <button class="secondary scenario-btn" onclick="scenarioOverspend()">
-            💸 Dépenser plus que le solde
-            <small>Montant &gt; solde réel → rejectedInsufficientBalance</small>
-        </button>
-        <button class="secondary scenario-btn" onclick="scenarioDoubleGenesis()">
-            🌱 Miner la genesis une 2ᵉ fois
-            <small>Un mint déjà accepté → rejectedDuplicateGenesis</small>
-        </button>
-        <button class="secondary scenario-btn" onclick="scenarioLateSend()">
-            ⏳ Receive orphelin → send tardif
-            <small>Crée un receive dont le send n'existe pas encore, puis fait "arriver" le send → rejeu automatique</small>
-        </button>
-        <button class="secondary scenario-btn" onclick="scenarioDoubleClaim()">
-            🎯 Réclamer un send déjà réclamé
-            <small>2ᵉ receive sur le même send → rejectedDuplicateReceive</small>
-        </button>
+    <div class="divider"></div>
+    <h2>Automatisation</h2>
+    <div class="card">
+      <div class="toggle-row"><input type="checkbox" id="auto-chat" checked onchange="toggleAuto()"><label for="auto-chat">Chat automatique continu</label></div>
+      <div class="toggle-row"><input type="checkbox" id="auto-tx" checked onchange="toggleAuto()"><label for="auto-tx">Transactions automatiques</label></div>
+      <div class="toggle-row"><input type="checkbox" id="auto-market" checked onchange="toggleAuto()"><label for="auto-market">Marché OTC automatique</label></div>
+      <div class="slider-row"><label>Vitesse</label><input type="range" id="auto-speed" min="1" max="10" value="5" oninput="updateSpeedLabel()"><span id="auto-speed-label">5x</span></div>
+      <div class="toggle-row"><input type="checkbox" id="auto-claim" checked><label for="auto-claim">Auto-receive (comme WalletKernel)</label></div>
+    </div>
+  </section>
 
-        <div class="divider"></div>
-        <button class="danger" onclick="resetAll()">↺ Réinitialiser tout le bac à sable</button>
-    </section>
+  <!-- COLONNE 2 : Vue depuis un nœud -->
+  <section id="col-view">
+    <h2>Vue détaillée</h2>
+    <div class="node-view-bar">
+      <select id="view-node" onchange="changeView()" style="width:auto;flex:1;margin:0;"></select>
+      <button class="small secondary" onclick="resetSelectedNode()" title="Réinitialiser ce nœud">↺ Reset</button>
+      <button class="small secondary" onclick="deleteSelectedNode()" style="color:var(--error);">✕</button>
+    </div>
+    <div id="node-info" class="card"></div>
 
-    <!-- COLONNE 3 : ledger + journal -->
-    <section>
-        <h2>Ledger (blocs acceptés)</h2>
-        <div style="max-height:220px; overflow-y:auto; margin-bottom:16px;">
-            <table id="ledger-table">
-                <thead><tr><th>Type</th><th>De</th><th>Vers</th><th>Montant</th></tr></thead>
-                <tbody id="ledger-body"></tbody>
-            </table>
-            <div id="ledger-empty" class="empty">Aucun bloc encore.</div>
-        </div>
+    <div class="divider"></div>
+    <h3>Envoyer un paiement</h3>
+    <div class="card">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;">
+        <div class="field" style="margin:0;"><label>De</label><select id="tx-from" style="margin:0;"></select></div>
+        <div class="field" style="margin:0;"><label>Vers</label><select id="tx-to" style="margin:0;"></select></div>
+      </div>
+      <div style="display:flex;gap:6px;align-items:center;">
+        <input id="tx-amount" type="number" value="5" min="1" style="width:80px;margin:0;">
+        <button class="small" onclick="doSend()" style="flex:1;">Envoyer</button>
+        <button class="small secondary" onclick="doStressSend()">🏋️ Stress</button>
+      </div>
+    </div>
 
-        <h2>Journal des événements</h2>
-        <div id="log"></div>
-    </section>
+    <div class="divider"></div>
+    <h3>Ledger <span id="ledger-count" style="color:var(--muted);font-size:10px;"></span></h3>
+    <div style="max-height:180px;overflow-y:auto;margin-bottom:8px;">
+      <table><thead><tr><th>Type</th><th>De</th><th>Vers</th><th>Montant</th></tr></thead><tbody id="ledger-body"></tbody></table>
+      <div id="ledger-empty" class="empty">Aucun bloc.</div>
+    </div>
+
+    <div class="divider"></div>
+    <h3>Messagerie <span id="msg-count" style="color:var(--muted);font-size:10px;"></span></h3>
+    <div id="messages-box" style="max-height:140px;overflow-y:auto;"></div>
+  </section>
+
+  <!-- COLONNE 3 : Marché & Journal -->
+  <section id="col-market">
+    <h2>Marché OTC</h2>
+    <div id="market-orders" style="max-height:140px;overflow-y:auto;margin-bottom:6px;">
+      <table><thead><tr><th>Côté</th><th>Nœud</th><th>Qté</th><th>Prix</th></tr></thead><tbody id="order-body"></tbody></table>
+      <div id="orders-empty" class="empty">Aucun ordre.</div>
+    </div>
+    <div style="display:flex;gap:6px;margin-bottom:6px;">
+      <button class="small secondary" onclick="postOrder('buy')">📈 Acheter</button>
+      <button class="small secondary" onclick="postOrder('sell')">📉 Vendre</button>
+    </div>
+    <h3>Trades <span id="trade-count" style="color:var(--muted);font-size:10px;"></span></h3>
+    <div style="max-height:100px;overflow-y:auto;margin-bottom:6px;">
+      <table><thead><tr><th>Vendeur</th><th>Acheteur</th><th>Qté</th><th>Prix</th></tr></thead><tbody id="trade-body"></tbody></table>
+      <div id="trades-empty" class="empty">Aucun trade.</div>
+    </div>
+
+    <div class="divider"></div>
+    <h2>Scénarios guidés</h2>
+    <div style="display:flex;flex-wrap:wrap;gap:4px;">
+      <button class="small secondary" onclick="scenarioReplay()" title="Renvoie la même tx déjà acceptée → rejectedReplay">↻ Rejeu</button>
+      <button class="small secondary" onclick="scenarioOverspend()" title="Montant > solde → rejectedInsufficientBalance">💸 Sur-dépense</button>
+      <button class="small secondary" onclick="scenarioDoubleGenesis()" title="Genesis déjà mintée → rejectedDuplicateGenesis">🌱 2ᵉ genesis</button>
+      <button class="small secondary" onclick="scenarioLateSend()" title="Receive orphelin → send tardif → déblocage auto">⏳ Send tardif</button>
+      <button class="small secondary" onclick="scenarioDoubleClaim()" title="2ᵉ receive sur le même send → rejectedDuplicateReceive">🎯 Double claim</button>
+    </div>
+
+    <div class="divider"></div>
+    <h2>Métriques en direct</h2>
+    <div id="live-metrics" class="metrics"></div>
+
+    <div class="divider"></div>
+    <h2>Journal réseau</h2>
+    <div style="display:flex;gap:6px;margin-bottom:6px;">
+      <button class="small secondary" onclick="clearLog()">Effacer</button>
+      <button class="small secondary" onclick="exportReport()">📋 Rapport</button>
+      <button class="small danger" onclick="resetAll()">↺ Reset global</button>
+    </div>
+    <div id="log"></div>
+  </section>
 </main>
 
 <script>
-    // ============================================================
-    // Portage JS fidèle de DagEngine / LedgerBalances / TxType.
-    // Même noms de résultats (rejectedX) que le Dart d'origine, pour
-    // qu'un rejet ici pointe directement vers la même règle là-bas.
-    // ============================================================
+// ============================================================
+// CONSTANTES & AIDE
+// ============================================================
+const TxType = { SEND: 'send', RECEIVE: 'receive' };
+const MINT_ADDRESS = '0xMINT_GENESIS_TREASURY';
+let idCounter = 1;
+let globalLog = [];
+let perfMetrics = { txTotal:0, txOk:0, txRej:0, msgTotal:0, tradeTotal:0, startTime:Date.now(), counts:[] };
 
-    const TxType = { SEND: 'send', RECEIVE: 'receive' };
-    const MINT_ADDRESS = '0xMINT_GENESIS_TREASURY';
+function newId(prefix){ return `${prefix}-${idCounter++}`; }
+function shortAddr(a){ return a && a.length>14 ? a.slice(0,5)+'…'+a.slice(-3) : a||'?'; }
+function rand(min,max){ return Math.floor(Math.random()*(max-min+1))+min; }
+function pick(arr){ return arr[rand(0,arr.length-1)]; }
+function sleep(ms){ return new Promise(r=>setTimeout(r,ms)); }
 
-    let users = [];       // {name, address}
-    let ledger = new Map();          // id -> tx
-    let lastNonce = new Map();       // address -> nonce
-    let balances = new Map();        // address -> amount (int)
-    let claimedSendIds = new Set();
-    let pendingReceives = new Map(); // linkedSendId -> [tx]
-    let genesisMinted = false;
-    let idCounter = 1;
-    let pendingLateSend = null; // pour le scénario "receive orphelin"
+const CHAT_TEXTS = [
+  "Salut ! tu as reçu mes DORO ?","Oui bien reçu !","Parfait, le réseau marche bien.",
+  "Tu peux me renvoyer un message ?","Bien sûr, le chat P2P fonctionne.",
+  "Je viens de miner un bloc.","J'ai vu passer ta tx dans mon ledger.",
+  "Test de latence... reçu ?","Reçu ! 5 étoiles ⭐","Le DAG est bien cohérent.",
+  "Je fais tourner un nœud depuis 10 min.","Moi aussi, tout est synchro.",
+  "T'as vu le cours du DORO ?","Encore stable, c'est solide.",
+  "Marché OTC actif aujourd'hui !","Je mets un ordre d'achat.",
+  "Gossip protocol en pleine forme.","Aucune divergence détectée.",
+  "Je propage le message à mes pairs.","Reçu et retransmis.",
+  "Belle démo multi-nœuds !","On va monter à 10 nœuds ?",
+  "Le consensus BFT tient bien.","Les poids de vote sont justes.",
+  "Envoi de fonds inter-nœuds OK.","Réception auto confirmée."
+];
 
-    function isMint(addr){ return addr === MINT_ADDRESS; }
-    function newId(prefix){ return `${prefix}-${idCounter++}`; }
-    function balanceOf(addr){ return balances.get(addr) || 0; }
-    function canSpend(addr, amount){ return isMint(addr) ? true : balanceOf(addr) >= amount; }
-    function debit(addr, amount){ if(!isMint(addr)) balances.set(addr, balanceOf(addr) - amount); }
-    function credit(addr, amount){ balances.set(addr, balanceOf(addr) + amount); }
+// ============================================================
+// DoroNode — Chaque pair a son propre état local
+// ============================================================
+class DoroNode {
+  constructor(name, address){
+    this.name = name;
+    this.address = address;
+    this.online = true;
+    this.ledger = new Map();
+    this.lastNonce = new Map();
+    this.balances = new Map();
+    this.claimedSendIds = new Set();
+    this.pendingReceives = new Map();
+    this.genesisMinted = false;
+    this.messages = [];
+    this.knownOrders = new Map();
+    this.knownTrades = [];
+    this.connectedTo = new Set();
+    this.stats = { txCreated:0, txAccepted:0, txRejected:0, msgReceived:0, msgSent:0, ordersPlaced:0 };
+    this.lastSeen = new Map();
+  }
 
-    /** Coeur des règles — copie 1:1 de DagEngine.addValidated. */
-    function addValidated(tx){
-      if (ledger.has(tx.id)) return 'alreadyKnown';
+  balanceOf(addr){ return this.balances.get(addr) || 0; }
+  isMint(addr){ return addr === MINT_ADDRESS; }
+  canSpend(addr, amount){ return this.isMint(addr) ? true : this.balanceOf(addr) >= amount; }
+  debit(addr, amount){ if(!this.isMint(addr)) this.balances.set(addr, this.balanceOf(addr) - amount); }
+  credit(addr, amount){ this.balances.set(addr, this.balanceOf(addr) + amount); }
 
-      if (isMint(tx.from)) {
-        if (genesisMinted) return 'rejectedDuplicateGenesis';
-      } else {
-        const last = lastNonce.get(tx.from);
-        if (last !== undefined && tx.nonce <= last) return 'rejectedReplay';
+  connectionCount(){ return [...this.connectedTo].filter(a => sim.nodes.has(a) && sim.nodes.get(a).online).length; }
+  get onlinePeers(){ return [...this.connectedTo].filter(a => sim.nodes.has(a) && sim.nodes.get(a).online); }
 
-        if (tx.type === TxType.SEND) {
-          if (!canSpend(tx.from, tx.amount)) return 'rejectedInsufficientBalance';
-        } else {
-          const linkedId = tx.linkedSendId;
-          if (!linkedId) return 'rejectedInvalidReceive';
-          const sendTx = ledger.get(linkedId);
-          if (!sendTx) {
-            if (!pendingReceives.has(linkedId)) pendingReceives.set(linkedId, []);
-            pendingReceives.get(linkedId).push(tx);
-            return 'rejectedUnknownSend';
-          }
-          if (sendTx.type !== TxType.SEND || sendTx.to !== tx.from) return 'rejectedInvalidReceive';
-          if (claimedSendIds.has(linkedId)) return 'rejectedDuplicateReceive';
-          if (sendTx.amount !== tx.amount) return 'rejectedInvalidReceive';
-        }
-      }
-
-      ledger.set(tx.id, tx);
-      if (isMint(tx.from)) {
-        genesisMinted = true;
-        credit(tx.to, tx.amount);
-      } else {
-        lastNonce.set(tx.from, tx.nonce);
-        if (tx.type === TxType.SEND) {
-          debit(tx.from, tx.amount);
-        } else {
-          credit(tx.from, tx.amount);
-          claimedSendIds.add(tx.linkedSendId);
-        }
-      }
-
+  addValidated(tx){
+    if (this.ledger.has(tx.id)) return 'alreadyKnown';
+    if (this.isMint(tx.from)) {
+      if (this.genesisMinted) return 'rejectedDuplicateGenesis';
+    } else {
+      const last = this.lastNonce.get(tx.from);
+      if (last !== undefined && tx.nonce <= last) return 'rejectedReplay';
       if (tx.type === TxType.SEND) {
-        const waiting = pendingReceives.get(tx.id);
-        if (waiting) {
-          pendingReceives.delete(tx.id);
-          for (const rx of waiting) {
-            const r = addValidated(rx);
-            if (r === 'accepted') logLine(`↻ receive en attente débloqué automatiquement : ${rx.id}`, 'pend');
+        if (!this.canSpend(tx.from, tx.amount)) return 'rejectedInsufficientBalance';
+      } else {
+        const linkedId = tx.linkedSendId;
+        if (!linkedId) return 'rejectedInvalidReceive';
+        const sendTx = this.ledger.get(linkedId);
+        if (!sendTx) {
+          if (!this.pendingReceives.has(linkedId)) this.pendingReceives.set(linkedId, []);
+          this.pendingReceives.get(linkedId).push(tx);
+          return 'rejectedUnknownSend';
+        }
+        if (sendTx.type !== TxType.SEND || sendTx.to !== tx.from) return 'rejectedInvalidReceive';
+        if (this.claimedSendIds.has(linkedId)) return 'rejectedDuplicateReceive';
+        if (sendTx.amount !== tx.amount) return 'rejectedInvalidReceive';
+      }
+    }
+    this.ledger.set(tx.id, tx);
+    this.stats.txAccepted++;
+    if (this.isMint(tx.from)) {
+      this.genesisMinted = true;
+      this.credit(tx.to, tx.amount);
+    } else {
+      this.lastNonce.set(tx.from, tx.nonce);
+      if (tx.type === TxType.SEND) {
+        this.debit(tx.from, tx.amount);
+      } else {
+        this.credit(tx.from, tx.amount);
+        this.claimedSendIds.add(tx.linkedSendId);
+      }
+    }
+    if (tx.type === TxType.SEND) {
+      const waiting = this.pendingReceives.get(tx.id);
+      if (waiting) {
+        this.pendingReceives.delete(tx.id);
+        for (const rx of waiting) {
+          const r = this.addValidated(rx);
+          if (r === 'accepted') netLog(`↻ Receive en attente débloqué chez ${this.name} : ${rx.id}`, 'pend');
+        }
+      }
+    }
+    return 'accepted';
+  }
+
+  autoClaim(sendTx){
+    if (!document.getElementById('auto-claim').checked) return;
+    const nonce = (this.lastNonce.get(sendTx.to) || 0) + 1;
+    const rx = { id:newId('receive'), type:TxType.RECEIVE, from:sendTx.to, to:sendTx.to, amount:sendTx.amount, nonce, linkedSendId:sendTx.id };
+    const r = this.addValidated(rx);
+    if (r === 'accepted') netLog(`🤖 ${this.name} → Auto-receive pour ${shortAddr(sendTx.id)}`, 'ok');
+  }
+
+  // === CHAT ===
+  sendMessage(toAddr, text){
+    if (!this.online) return false;
+    const target = sim.nodes.get(toAddr);
+    if (!target || !target.online || !this.connectedTo.has(toAddr)) return false;
+    const msg = { from:this.address, fromName:this.name, text, timestamp:Date.now() };
+    sim.deliverMessage(this, target, msg);
+    this.stats.msgSent++;
+    return true;
+  }
+
+  // === MARCHÉ ===
+  postOrder(side, amount, price){
+    if (!this.online) return null;
+    const order = { id:newId('order'), nodeId:this.address, nodeName:this.name, side, amount, price, timestamp:Date.now(), filled:0, cancelled:false };
+    this.knownOrders.set(order.id, order);
+    this.stats.ordersPlaced++;
+    sim.broadcastOrder(this, order);
+    netLog(`📋 ${this.name} : ordre ${side} ${amount} DORO @ ${price}`, 'info');
+    return order;
+  }
+
+  matchOrders(){
+    if (!this.online) return;
+    const active = [...this.knownOrders.values()].filter(o => !o.cancelled && o.filled < o.amount);
+    const buys = active.filter(o => o.side === 'buy').sort((a,b) => b.price - a.price);
+    const sells = active.filter(o => o.side === 'sell').sort((a,b) => a.price - b.price);
+    for (const buy of buys) {
+      for (const sell of sells) {
+        if (sell.nodeId === buy.nodeId) continue;
+        if (buy.price >= sell.price) {
+          const qty = Math.min(buy.amount - buy.filled, sell.amount - sell.filled);
+          if (qty <= 0) continue;
+          buy.filled += qty; sell.filled += qty;
+          const trade = { id:newId('trade'), orderId:b.id, orderId2:s.id, buyerId:buy.nodeId, buyerName:buy.nodeName, sellerId:sell.nodeId, sellerName:sell.nodeName, amount:qty, price:sell.price, timestamp:Date.now(), status:'confirmed' };
+          this.knownTrades.push(trade);
+          sim.broadcastTrade(this, trade);
+          netLog(`🤝 TRADE : ${buy.nodeName} achète ${qty} DORO à ${sell.nodeName} pour ${sell.price}`, 'ok');
+          // La vente déclenche une transaction send
+          const sellNode = sim.nodes.get(sell.nodeId);
+          if (sellNode) {
+            const nonce = (this.lastNonce.get(buy.nodeId) || 0) + 1;
+            const payTx = { id:newId('send'), type:TxType.SEND, from:buy.nodeId, to:sell.nodeId, amount:qty * sell.price, nonce };
+            const r = this.addValidated(payTx);
+            if (r === 'accepted') {
+              perfMetrics.txTotal++; perfMetrics.txOk++;
+              netLog(`💸 Paiement Trade : ${shortAddr(buy.nodeId)} → ${shortAddr(sell.nodeId)} ${qty * sell.price} DORO`, 'ok');
+              sim.broadcastTx(this, payTx);
+              if (document.getElementById('auto-claim').checked) this.autoClaim(payTx);
+            }
           }
         }
-        // auto-claim, comme WalletKernel._autoClaim côté app
-        if (!document.getElementById('manual-mode').checked) {
-          autoClaim(tx);
+      }
+    }
+  }
+}
+
+// ============================================================
+// NetworkSimulator — Gère tous les nœuds et connexions
+// ============================================================
+class NetworkSimulator {
+  constructor(){
+    this.nodes = new Map();
+    this.selectedAddress = null;
+    this.autoTimers = { chat:null, tx:null, market:null, chaos:null };
+  }
+
+  addNode(name){
+    const addr = '0x' + Math.random().toString(16).slice(2,10) + Math.random().toString(16).slice(2,10);
+    const node = new DoroNode(name, addr);
+    this.nodes.set(addr, node);
+    if (!this.selectedAddress) this.selectedAddress = addr;
+    netLog(`🆕 Nœud créé : ${name} (${shortAddr(addr)})`, 'info');
+    this.rebuildTopology();
+    return node;
+  }
+
+  removeNode(addr){
+    const node = this.nodes.get(addr);
+    if (!node) return;
+    for (const other of this.nodes.values()) {
+      other.connectedTo.delete(addr);
+    }
+    this.nodes.delete(addr);
+    if (this.selectedAddress === addr) this.selectedAddress = this.nodes.size ? this.nodes.keys().next().value : null;
+    netLog(`🗑️ Nœud supprimé : ${node.name}`, 'rej');
+    this.rebuildTopology();
+  }
+
+  getNode(addr){ return this.nodes.get(addr); }
+  get selected(){ return this.nodes.get(this.selectedAddress); }
+
+  rebuildTopology(){
+    const online = [...this.nodes.values()].filter(n => n.online);
+    for (const node of online) {
+      const potentials = online.filter(n => n.address !== node.address);
+      const targetCount = Math.max(2, Math.ceil(potentials.length * 0.7));
+      const shuffled = potentials.sort(() => Math.random() - 0.5);
+      for (const p of shuffled.slice(0, targetCount)) {
+        node.connectedTo.add(p.address);
+      }
+    }
+  }
+
+  toggleNode(addr){
+    const node = this.nodes.get(addr);
+    if (!node) return;
+    node.online = !node.online;
+    if (!node.online) {
+      for (const other of this.nodes.values()) other.connectedTo.delete(addr);
+      netLog(`🔴 ${node.name} → HORS LIGNE`, 'rej');
+    } else {
+      this.rebuildTopology();
+      netLog(`🟢 ${node.name} → EN LIGNE`, 'ok');
+    }
+  }
+
+  // === GOSSIP : Diffusion aux pairs connectés ===
+  broadcastTx(fromNode, tx){
+    for (const peerAddr of fromNode.onlinePeers) {
+      const peer = this.nodes.get(peerAddr);
+      if (!peer || !peer.online) continue;
+      if (simulateLoss()) continue;
+      const delay = simulateLatency();
+      setTimeout(() => {
+        if (!peer.online) return;
+        const r = peer.addValidated(tx);
+        if (r === 'accepted' && tx.type === TxType.SEND) {
+          perfMetrics.txTotal++;
+          peer.autoClaim(tx);
+        }
+      }, delay);
+    }
+  }
+
+  deliverMessage(fromNode, toNode, msg){
+    if (!toNode.online || !fromNode.connectedTo.has(toNode.address)) return false;
+    if (simulateLoss()) return false;
+    const delay = simulateLatency();
+    setTimeout(() => {
+      if (!toNode.online) return;
+      toNode.messages.push(msg);
+      toNode.stats.msgReceived++;
+      perfMetrics.msgTotal++;
+      if (toNode.messages.length > 200) toNode.messages.splice(0, 50);
+      netLog(`💬 ${fromNode.name} → ${toNode.name} : ${msg.text.slice(0,40)}`, 'info');
+    }, delay);
+    return true;
+  }
+
+  broadcastOrder(fromNode, order){
+    for (const peerAddr of fromNode.onlinePeers) {
+      const peer = this.nodes.get(peerAddr);
+      if (!peer || !peer.online) continue;
+      if (simulateLoss()) continue;
+      const delay = simulateLatency();
+      setTimeout(() => {
+        if (!peer.online) return;
+        peer.knownOrders.set(order.id, order);
+      }, delay);
+    }
+  }
+
+  broadcastTrade(fromNode, trade){
+    for (const peerAddr of fromNode.onlinePeers) {
+      const peer = this.nodes.get(peerAddr);
+      if (!peer || !peer.online) continue;
+      if (simulateLoss()) continue;
+      setTimeout(() => {
+        if (!peer.online) return;
+        peer.knownTrades.push(trade);
+      }, simulateLatency());
+    }
+  }
+
+  // === REMISE À ZÉRO D'UN NŒUD ===
+  resetNode(addr){
+    const old = this.nodes.get(addr);
+    if (!old) return;
+    const node = new DoroNode(old.name, addr);
+    node.connectedTo = old.connectedTo;
+    node.online = old.online;
+    this.nodes.set(addr, node);
+    netLog(`↺ ${node.name} réinitialisé (ledger vierge)`, 'pend');
+  }
+
+  // === BOUCLES AUTO ===
+  startAuto(){
+    this.stopAuto();
+    const speed = parseInt(document.getElementById('auto-speed').value);
+    const base = 3000;
+
+    if (document.getElementById('auto-chat').checked) {
+      this.autoTimers.chat = setInterval(() => this.autoChatTick(), base / speed);
+    }
+    if (document.getElementById('auto-tx').checked) {
+      this.autoTimers.tx = setInterval(() => this.autoTxTick(), (base * 1.5) / speed);
+    }
+    if (document.getElementById('auto-market').checked) {
+      this.autoTimers.market = setInterval(() => this.autoMarketTick(), (base * 2) / speed);
+    }
+    if (document.getElementById('chaos-toggle').checked) {
+      this.autoTimers.chaos = setInterval(() => this.chaosTick(), (base * 2) / speed);
+    }
+  }
+
+  stopAuto(){
+    for (const key of Object.keys(this.autoTimers)) {
+      if (this.autoTimers[key]) { clearInterval(this.autoTimers[key]); this.autoTimers[key] = null; }
+    }
+  }
+
+  autoChatTick(){
+    const online = [...this.nodes.values()].filter(n => n.online && n.connectionCount() > 0);
+    if (online.length < 2) return;
+    const sender = pick(online);
+    const peers = sender.onlinePeers.filter(a => a !== sender.address);
+    if (!peers.length) return;
+    const targetAddr = pick(peers);
+    const text = pick(CHAT_TEXTS);
+    sender.sendMessage(targetAddr, text);
+  }
+
+  autoTxTick(){
+    const online = [...this.nodes.values()].filter(n => n.online && n.connectionCount() > 0);
+    if (online.length < 2) return;
+    const sender = pick(online);
+    const nonGenesis = online.filter(n => n.address !== sender.address && !n.isMint(n.address));
+    if (!nonGenesis.length) return;
+    const target = pick(nonGenesis);
+    const maxAmt = Math.min(Math.floor(sender.balanceOf(sender.address) * 0.2), 50);
+    if (maxAmt < 1) return;
+    const amount = rand(1, Math.max(1, maxAmt));
+    const nonce = (sender.lastNonce.get(sender.address) || 0) + 1;
+    const tx = { id:newId('send'), type:TxType.SEND, from:sender.address, to:target.address, amount, nonce };
+    const r = sender.addValidated(tx);
+    if (r === 'accepted') {
+      perfMetrics.txTotal++; perfMetrics.txOk++;
+      netLog(`🤖 ${sender.name} → ${target.name} ${amount} DORO (auto)`, 'ok');
+      sim.broadcastTx(sender, tx);
+      sender.autoClaim(tx);
+    } else {
+      perfMetrics.txRej++;
+    }
+  }
+
+  autoMarketTick(){
+    const online = [...this.nodes.values()].filter(n => n.online);
+    if (online.length < 3) return;
+    // Un nœud poste un ordre aléatoire
+    const trader = pick(online);
+    const side = Math.random() < 0.5 ? 'buy' : 'sell';
+    const amt = rand(1, 20);
+    const price = rand(1, 10);
+    trader.postOrder(side, amt, price);
+    // Tentative de matching
+    for (const node of online) node.matchOrders();
+  }
+
+  chaosTick(){
+    if (!document.getElementById('chaos-toggle').checked) return;
+    const discProb = parseInt(document.getElementById('chaos-disc').value) / 100;
+    const partProb = parseInt(document.getElementById('chaos-part').value) / 100;
+    const online = [...this.nodes.values()].filter(n => n.online);
+    // Déconnexion aléatoire
+    for (const node of online) {
+      if (Math.random() < discProb && online.length > 2) {
+        this.toggleNode(node.address);
+        // Reconnexion après un délai
+        setTimeout(() => {
+          if (sim.nodes.get(node.address) && !sim.nodes.get(node.address).online) {
+            sim.toggleNode(node.address);
+          }
+        }, rand(2000, 8000));
+        break;
+      }
+    }
+    // Partition réseau
+    if (Math.random() < partProb && online.length >= 4) {
+      const half = Math.floor(online.length / 2);
+      const partA = online.slice(0, half);
+      const partB = online.slice(half);
+      for (const a of partA) {
+        for (const b of partB) {
+          a.connectedTo.delete(b.address);
+          b.connectedTo.delete(a.address);
         }
       }
-
-      return 'accepted';
-    }
-
-    function autoClaim(sendTx){
-      const nonce = (lastNonce.get(sendTx.to) || 0) + 1;
-      const receiveTx = {
-        id: newId('receive'), type: TxType.RECEIVE,
-        from: sendTx.to, to: sendTx.to, amount: sendTx.amount,
-        nonce, linkedSendId: sendTx.id,
-      };
-      const r = addValidated(receiveTx);
-      logResult(receiveTx, r);
-    }
-
-    const RESULT_LABEL = {
-      accepted: ['✔ accepté', 'ok'],
-      alreadyKnown: ['= déjà connu', 'pend'],
-      rejectedReplay: ['✘ rejectedReplay — nonce déjà utilisé (rejeu)', 'rej'],
-      rejectedInsufficientBalance: ['✘ rejectedInsufficientBalance — solde insuffisant', 'rej'],
-      rejectedDuplicateGenesis: ['✘ rejectedDuplicateGenesis — genesis déjà mintée', 'rej'],
-      rejectedUnknownSend: ['⏳ rejectedUnknownSend — send pas encore connu, mis en attente', 'pend'],
-      rejectedInvalidReceive: ['✘ rejectedInvalidReceive — receive mal formé/mal dirigé', 'rej'],
-      rejectedDuplicateReceive: ['✘ rejectedDuplicateReceive — ce send est déjà réclamé', 'rej'],
-    };
-
-    function logLine(text, cls){
-      const el = document.getElementById('log');
-      const div = document.createElement('div');
-      div.className = 'log-line ' + (cls||'');
-      const time = new Date().toLocaleTimeString('fr-FR');
-      div.innerHTML = `<span style="color:#666">${time}</span> ${text}`;
-      el.prepend(div);
-    }
-
-    function shortAddr(a){ return a.length>14 ? a.slice(0,6)+'…'+a.slice(-4) : a; }
-
-    function logResult(tx, result){
-      const [label, cls] = RESULT_LABEL[result] || [result, ''];
-      const kind = tx.type === TxType.SEND && isMint(tx.from) ? 'mint' : tx.type;
-      logLine(`<b>${kind}</b> ${shortAddr(tx.from)} → ${shortAddr(tx.to)} (${tx.amount}) : ${label}`, cls);
-      render();
-    }
-
-    // ---------------- UI glue ----------------
-
-    function createUser(){
-      const nameInput = document.getElementById('new-user-name');
-      const name = nameInput.value.trim() || `Utilisateur ${users.length+1}`;
-      const address = '0x' + Math.random().toString(16).slice(2,10) + Math.random().toString(16).slice(2,10);
-      users.push({name, address});
-      balances.set(address, 0);
-      nameInput.value = '';
-      logLine(`👤 Utilisateur créé : <b>${name}</b> (${shortAddr(address)})`, '');
-      render();
-    }
-
-    function mintGenesis(){
-      const target = document.getElementById('genesis-target').value;
-      if (!target) return;
-      const tx = { id: newId('genesis'), type: TxType.SEND, from: MINT_ADDRESS, to: target, amount: 50000000000, nonce: 0 };
-      const r = addValidated(tx);
-      logResult(tx, r);
-    }
-
-    function doSend(){
-      const from = document.getElementById('send-from').value;
-      const to = document.getElementById('send-to').value;
-      const amount = parseInt(document.getElementById('send-amount').value, 10);
-      if (!from || !to || from === to || !amount || amount <= 0) {
-        logLine('⚠️ Sélectionne deux utilisateurs différents et un montant valide.', 'rej');
-        return;
-      }
-      const nonce = (lastNonce.get(from) || 0) + 1;
-      const tx = { id: newId('send'), type: TxType.SEND, from, to, amount, nonce };
-      const r = addValidated(tx);
-      logResult(tx, r);
-      window._lastSend = tx; // pour les scénarios guidés
-    }
-
-    function scenarioReplay(){
-      if (!window._lastSend) { logLine('ℹ️ Envoie d\'abord un paiement normal, puis relance ce scénario.', 'pend'); return; }
-      const original = window._lastSend;
-      const replay = { id: newId('replay'), type: TxType.SEND, from: original.from, to: original.to, amount: original.amount, nonce: original.nonce };
-      const r = addValidated(replay);
-      logResult(replay, r);
-    }
-
-    function scenarioOverspend(){
-      const from = document.getElementById('send-from').value;
-      const to = document.getElementById('send-to').value;
-      if (!from || !to || from === to) { logLine('⚠️ Choisis deux utilisateurs différents dans "Envoyer un paiement" d\'abord.', 'rej'); return; }
-      const tooMuch = balanceOf(from) + 999999;
-      const nonce = (lastNonce.get(from) || 0) + 1;
-      const tx = { id: newId('overspend'), type: TxType.SEND, from, to, amount: tooMuch, nonce };
-      const r = addValidated(tx);
-      logResult(tx, r);
-    }
-
-    function scenarioDoubleGenesis(){
-      const target = document.getElementById('genesis-target').value;
-      if (!target) return;
-      const tx = { id: newId('genesis2'), type: TxType.SEND, from: MINT_ADDRESS, to: target, amount: 50000000000, nonce: 0 };
-      const r = addValidated(tx);
-      logResult(tx, r);
-    }
-
-    function scenarioLateSend(){
-      const from = document.getElementById('send-from').value;
-      const to = document.getElementById('send-to').value;
-      const amount = parseInt(document.getElementById('send-amount').value, 10) || 10;
-      if (!from || !to || from === to) { logLine('⚠️ Choisis deux utilisateurs différents dans "Envoyer un paiement" d\'abord.', 'rej'); return; }
-
-      const futureSendId = newId('send-future');
-      const nonce = (lastNonce.get(from) || 0) + 1;
-      const orphanReceive = { id: newId('receive-orphan'), type: TxType.RECEIVE, from: to, to, amount, nonce: (lastNonce.get(to)||0)+1, linkedSendId: futureSendId };
-
-      logLine(`🧪 Scénario : on injecte le <b>receive</b> AVANT que son <b>send</b> (${futureSendId}) n'existe...`, '');
-      const r1 = addValidated(orphanReceive);
-      logResult(orphanReceive, r1);
-
+      netLog(`🔀 PARTITION : ${partA.length} nœuds isolés de ${partB.length} nœuds`, 'rej');
       setTimeout(() => {
-        logLine(`🧪 ...puis, 1.5s plus tard, le <b>send</b> correspondant arrive enfin (simulé plus lent que le receive) :`, '');
-        const lateSend = { id: futureSendId, type: TxType.SEND, from, to, amount, nonce };
-        const r2 = addValidated(lateSend);
-        logResult(lateSend, r2);
-      }, 1500);
+        this.rebuildTopology();
+        netLog(`🔁 PARTITION RÉSOLUE : tous les nœuds reconnectés`, 'ok');
+      }, rand(5000, 15000));
     }
+  }
+}
 
-    function scenarioDoubleClaim(){
-      if (!window._lastSend) { logLine('ℹ️ Envoie d\'abord un paiement normal (en mode manuel, pour garder le send non réclamé), puis relance ce scénario.', 'pend'); return; }
-      const sendTx = window._lastSend;
-      const nonce = (lastNonce.get(sendTx.to) || 0) + 1;
-      const rx1 = { id: newId('rx1'), type: TxType.RECEIVE, from: sendTx.to, to: sendTx.to, amount: sendTx.amount, nonce, linkedSendId: sendTx.id };
-      logResult(rx1, addValidated(rx1));
-      const rx2 = { id: newId('rx2'), type: TxType.RECEIVE, from: sendTx.to, to: sendTx.to, amount: sendTx.amount, nonce: nonce+1, linkedSendId: sendTx.id };
-      logResult(rx2, addValidated(rx2));
+// ============================================================
+// Chaos helpers
+// ============================================================
+function simulateLoss(){
+  if (!document.getElementById('chaos-toggle').checked) return false;
+  const loss = parseInt(document.getElementById('chaos-loss').value) / 100;
+  return Math.random() < loss;
+}
+function simulateLatency(){
+  if (!document.getElementById('chaos-toggle').checked) return 0;
+  return rand(0, parseInt(document.getElementById('chaos-lat').value));
+}
+
+// ============================================================
+// Simulation globale & initialisation
+// ============================================================
+const sim = new NetworkSimulator();
+
+function netLog(text, cls=''){
+  const time = new Date().toLocaleTimeString('fr-FR');
+  globalLog.unshift({ time, text, cls });
+  if (globalLog.length > 500) globalLog.length = 500;
+  updateLogUI();
+}
+
+function updateLogUI(){
+  const el = document.getElementById('log');
+  el.innerHTML = globalLog.slice(0, 80).map(e =>
+    `<div class="log-line ${e.cls}"><span style="color:#555">${e.time}</span> ${e.text}</div>`
+  ).join('');
+}
+
+// ============================================================
+// UI : Création / Suppression / Reset
+// ============================================================
+function createNode(){
+  const nameInput = document.getElementById('new-node-name');
+  const name = nameInput.value.trim() || `Nœud ${sim.nodes.size+1}`;
+  sim.addNode(name);
+  nameInput.value = '';
+  render();
+}
+
+function deleteSelectedNode(){
+  const addr = document.getElementById('view-node').value;
+  if (!addr || !sim.nodes.has(addr)) return;
+  if (!confirm(`Supprimer ${sim.nodes.get(addr).name} ?`)) return;
+  sim.removeNode(addr);
+  render();
+}
+
+function resetSelectedNode(){
+  const addr = document.getElementById('view-node').value;
+  if (!addr) return;
+  sim.resetNode(addr);
+  render();
+}
+
+function resetAll(){
+  if (!confirm('Réinitialiser TOUS les nœuds et le journal ?')) return;
+  sim.stopAuto();
+  sim.nodes.clear();
+  globalLog = [];
+  perfMetrics = { txTotal:0, txOk:0, txRej:0, msgTotal:0, tradeTotal:0, startTime:Date.now(), counts:[] };
+  idCounter = 1;
+  document.getElementById('log').innerHTML = '';
+  sim.selectedAddress = null;
+  netLog('↺ Réseau entièrement réinitialisé.', 'info');
+  render();
+}
+
+// ============================================================
+// UI : Envoi de paiement
+// ============================================================
+function doSend(){
+  const from = document.getElementById('tx-from').value;
+  const to = document.getElementById('tx-to').value;
+  const amount = parseInt(document.getElementById('tx-amount').value, 10);
+  if (!from || !to || from === to || !amount || amount <= 0) {
+    netLog('⚠️ Sélectionne deux nœuds différents et un montant valide.', 'rej');
+    return;
+  }
+  const node = sim.getNode(from);
+  if (!node || !node.online) { netLog('⚠️ Nœud source hors ligne', 'rej'); return; }
+  const nonce = (node.lastNonce.get(from) || 0) + 1;
+  const tx = { id:newId('send'), type:TxType.SEND, from, to, amount, nonce };
+  const r = node.addValidated(tx);
+  perfMetrics.txTotal++;
+  window._lastSend = tx;
+  if (r === 'accepted') {
+    perfMetrics.txOk++;
+    netLog(`📦 ${node.name} → ${sim.getNode(to)?.name||shortAddr(to)} ${amount} DORO`, 'ok');
+    sim.broadcastTx(node, tx);
+    node.autoClaim(tx);
+  } else {
+    perfMetrics.txRej++;
+    netLog(`✘ ${r} : ${node.name} → ${sim.getNode(to)?.name||shortAddr(to)} ${amount} DORO`, 'rej');
+  }
+  render();
+}
+
+function doStressSend(){
+  const from = document.getElementById('tx-from').value;
+  const node = sim.getNode(from);
+  if (!node || !node.online) return;
+  const targets = [...sim.nodes.values()].filter(n => n.address !== from && n.online);
+  if (!targets.length) return;
+  const count = 5;
+  for (let i = 0; i < count; i++) {
+    const target = pick(targets);
+    const amt = rand(1, 10);
+    const nonce = (node.lastNonce.get(from) || 0) + 1;
+    const tx = { id:newId('send'), type:TxType.SEND, from, to:target.address, amount:amt, nonce };
+    const r = node.addValidated(tx);
+    if (r === 'accepted') {
+      perfMetrics.txTotal++; perfMetrics.txOk++;
+      sim.broadcastTx(node, tx);
+      node.autoClaim(tx);
     }
+  }
+  netLog(`🏋️ Stress : ${count} transactions envoyées par ${node.name}`, 'info');
+  render();
+}
 
-    function resetAll(){
-      users = []; ledger.clear(); lastNonce.clear(); balances.clear();
-      claimedSendIds.clear(); pendingReceives.clear(); genesisMinted = false;
-      idCounter = 1; window._lastSend = null;
-      document.getElementById('log').innerHTML = '';
-      logLine('↺ Bac à sable réinitialisé.', '');
-      render();
+// ============================================================
+// Scénarios guidés (adaptés multi-nœuds)
+// ============================================================
+let _lastSendPerNode = new Map();
+
+function getSelectedNode(){
+  const addr = document.getElementById('view-node').value;
+  const node = sim.getNode(addr);
+  if (!node) { netLog('⚠️ Sélectionne un nœud d\'abord', 'rej'); return null; }
+  return node;
+}
+
+function scenarioReplay(){
+  const node = getSelectedNode();
+  if (!node) return;
+  const last = window._lastSend;
+  if (!last) { netLog('ℹ️ Envoie d\'abord un paiement avec le nœud sélectionné, puis relance.', 'pend'); return; }
+  const replay = { id:newId('replay'), type:TxType.SEND, from:last.from, to:last.to, amount:last.amount, nonce:last.nonce };
+  const r = node.addValidated(replay);
+  if (r === 'accepted') perfMetrics.txOk++; else perfMetrics.txRej++;
+  perfMetrics.txTotal++;
+  netLog(`↻ Rejeu (même nonce ${last.nonce}) : ${r}`, r==='accepted'?'ok':r.startsWith('rejected')?'rej':'pend');
+  render();
+}
+
+function scenarioOverspend(){
+  const node = getSelectedNode();
+  if (!node || !node.online) return;
+  const targets = [...sim.nodes.values()].filter(n => n.address !== node.address && n.online);
+  if (!targets.length) { netLog('⚠️ Pas de cible disponible', 'rej'); return; }
+  const target = pick(targets);
+  const tooMuch = node.balanceOf(node.address) + 999999;
+  const nonce = (node.lastNonce.get(node.address) || 0) + 1;
+  const tx = { id:newId('overspend'), type:TxType.SEND, from:node.address, to:target.address, amount:tooMuch, nonce };
+  const r = node.addValidated(tx);
+  perfMetrics.txTotal++;
+  if (r === 'accepted') perfMetrics.txOk++; else perfMetrics.txRej++;
+  netLog(`💸 Sur-dépense (${tooMuch} DORO, solde=${node.balanceOf(node.address)}) : ${r}`, r.startsWith('rejected')?'rej':'ok');
+  render();
+}
+
+function scenarioDoubleGenesis(){
+  const node = getSelectedNode();
+  if (!node) return;
+  const tx = { id:newId('genesis2'), type:TxType.SEND, from:MINT_ADDRESS, to:node.address, amount:50000000000, nonce:0 };
+  const r = node.addValidated(tx);
+  if (r === 'accepted') perfMetrics.txOk++; else perfMetrics.txRej++;
+  perfMetrics.txTotal++;
+  netLog(`🌱 2ᵉ genesis par ${node.name} : ${r}`, r.startsWith('rejected')?'rej':'ok');
+  render();
+}
+
+function scenarioLateSend(){
+  const node = getSelectedNode();
+  if (!node || !node.online) return;
+  const targets = [...sim.nodes.values()].filter(n => n.address !== node.address && n.online);
+  if (!targets.length) { netLog('⚠️ Pas de cible', 'rej'); return; }
+  const target = pick(targets);
+  const amt = rand(5, 20);
+  const futureSendId = newId('send-future');
+  const nonce = (node.lastNonce.get(node.address) || 0) + 1;
+  const orphanReceive = { id:newId('receive-orphan'), type:TxType.RECEIVE, from:target.address, to:target.address, amount:amt, nonce:(node.lastNonce.get(target.address)||0)+1, linkedSendId:futureSendId };
+  netLog(`🧪 Receive orphelin injecté AVANT son send (${futureSendId})...`, 'pend');
+  const r1 = node.addValidated(orphanReceive);
+  netLog(`   Receive → ${r1}`, r1.startsWith('rejected')?'rej':'pend');
+  setTimeout(() => {
+    if (!node.online) return;
+    netLog(`🧪 ...1.5s plus tard le send correspondant arrive :`, 'pend');
+    const lateSend = { id:futureSendId, type:TxType.SEND, from:node.address, to:target.address, amount:amt, nonce };
+    const r2 = node.addValidated(lateSend);
+    perfMetrics.txTotal++;
+    if (r2 === 'accepted') {
+      perfMetrics.txOk++;
+      netLog(`   Send → ${r2} (receive en attente débloqué automatiquement)`, 'ok');
+      sim.broadcastTx(node, lateSend);
+      if (document.getElementById('auto-claim').checked) node.autoClaim(lateSend);
+    } else {
+      perfMetrics.txRej++;
+      netLog(`   Send → ${r2}`, 'rej');
     }
-
-    function render(){
-      // Liste des utilisateurs + soldes
-      const usersList = document.getElementById('users-list');
-      usersList.innerHTML = users.length ? '' : '<div class="empty">Aucun utilisateur. Crée-en au moins deux.</div>';
-      for (const u of users) {
-        const row = document.createElement('div');
-        row.className = 'user-row';
-        row.innerHTML = `<div><div class="user-name">${u.name}</div><div class="user-addr">${shortAddr(u.address)}</div></div><div class="balance">${balanceOf(u.address)}</div>`;
-        usersList.appendChild(row);
-      }
-
-      // Selects
-      for (const selId of ['genesis-target','send-from','send-to']) {
-        const sel = document.getElementById(selId);
-        const prev = sel.value;
-        sel.innerHTML = '<option value="">—</option>' + users.map(u => `<option value="${u.address}">${u.name}</option>`).join('');
-        if (users.some(u => u.address === prev)) sel.value = prev;
-      }
-      document.getElementById('mint-btn').disabled = genesisMinted;
-
-      // Ledger
-      const body = document.getElementById('ledger-body');
-      const rows = [...ledger.values()];
-      document.getElementById('ledger-empty').style.display = rows.length ? 'none' : 'block';
-      body.innerHTML = rows.map(tx => {
-        const kind = isMint(tx.from) ? 'mint' : tx.type;
-        return `<tr>
-          <td><span class="pill ${kind}">${kind}</span></td>
-          <td>${nameOf(tx.from)}</td>
-          <td>${nameOf(tx.to)}</td>
-          <td>${tx.amount}</td>
-        </tr>`;
-      }).join('');
-    }
-
-    function nameOf(addr){
-      if (isMint(addr)) return '🌱 mint';
-      const u = users.find(u => u.address === addr);
-      return u ? u.name : shortAddr(addr);
-    }
-
     render();
+  }, 1500);
+  render();
+}
+
+function scenarioDoubleClaim(){
+  const node = getSelectedNode();
+  if (!node) return;
+  const last = window._lastSend;
+  if (!last) { netLog('ℹ️ Envoie d\'abord un paiement avec le nœud sélectionné.', 'pend'); return; }
+  const nonce = (node.lastNonce.get(last.to) || 0) + 1;
+  const rx1 = { id:newId('rx1'), type:TxType.RECEIVE, from:last.to, to:last.to, amount:last.amount, nonce, linkedSendId:last.id };
+  netLog(`🎯 1er receive : ${node.addValidated(rx1)}`, 'ok');
+  const rx2 = { id:newId('rx2'), type:TxType.RECEIVE, from:last.to, to:last.to, amount:last.amount, nonce:nonce+1, linkedSendId:last.id };
+  const r = node.addValidated(rx2);
+  netLog(`🎯 2ᵉ receive (double claim) : ${r}`, r.startsWith('rejected')?'rej':'ok');
+  render();
+}
+
+// ============================================================
+// UI : Marché OTC
+// ============================================================
+function postOrder(side){
+  const addr = document.getElementById('view-node').value;
+  const node = sim.getNode(addr);
+  if (!node || !node.online) { netLog('⚠️ Nœud hors ligne', 'rej'); return; }
+  const amt = rand(1, 20);
+  const price = rand(1, 10);
+  node.postOrder(side, amt, price);
+  render();
+}
+
+// ============================================================
+// UI : Changement de vue & contrôles
+// ============================================================
+function changeView(){
+  sim.selectedAddress = document.getElementById('view-node').value;
+  render();
+}
+
+function toggleChaos(){
+  sim.stopAuto();
+  sim.startAuto();
+}
+
+function toggleAuto(){
+  sim.stopAuto();
+  sim.startAuto();
+}
+
+function updateSpeedLabel(){
+  document.getElementById('auto-speed-label').textContent = document.getElementById('auto-speed').value + 'x';
+  toggleAuto();
+}
+
+function updateChaosLabel(id, val){
+  document.getElementById(id).textContent = val + '%';
+}
+
+function clearLog(){
+  globalLog = [];
+  document.getElementById('log').innerHTML = '';
+}
+
+function exportReport(){
+  let report = `=== RAPPORT RÉSEAU DORO ===\n`;
+  report += `Date: ${new Date().toISOString()}\n`;
+  report += `Nœuds: ${sim.nodes.size}\n`;
+  report += `Transactions totales: ${perfMetrics.txTotal} (OK: ${perfMetrics.txOk}, REJ: ${perfMetrics.txRej})\n`;
+  report += `Messages: ${perfMetrics.msgTotal}\n`;
+  report += `Trades: ${perfMetrics.tradeTotal}\n`;
+  report += `\n--- Détail par nœud ---\n`;
+  for (const node of sim.nodes.values()) {
+    report += `${node.name} (${node.online?'EN LIGNE':'HORS LIGNE'}) | Ledger: ${node.ledger.size} txs | Balance: ${node.balanceOf(node.address)} | Msgs: ${node.messages.length} | Ordres: ${node.stats.ordersPlaced}\n`;
+  }
+  report += `\n--- Ledger (tous les blocs, vue globale) ---\n`;
+  const allTx = new Map();
+  for (const node of sim.nodes.values()) {
+    for (const [id, tx] of node.ledger) allTx.set(id, tx);
+  }
+  for (const tx of allTx.values()) {
+    report += `${tx.id} | ${tx.type} | ${shortAddr(tx.from)} → ${shortAddr(tx.to)} | ${tx.amount}\n`;
+  }
+  report += `=== FIN DU RAPPORT ===`;
+  const blob = new Blob([report], {type:'text/plain'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `doro-report-${Date.now()}.txt`;
+  a.click();
+  URL.revokeObjectURL(a.href);
+  netLog('📋 Rapport exporté', 'info');
+}
+
+// ============================================================
+// Rendu principal
+// ============================================================
+function render(){
+  // --- Liste des nœuds ---
+  const list = document.getElementById('nodes-list');
+  list.innerHTML = sim.nodes.size ? '' : '<div class="empty">Aucun nœud. Créez-en au moins deux.</div>';
+  for (const node of sim.nodes.values()) {
+    const row = document.createElement('div');
+    row.className = 'user-row';
+    row.onclick = () => { sim.selectedAddress = node.address; render(); };
+    const isSelected = sim.selectedAddress === node.address;
+    if (isSelected) row.style.background = 'var(--primary-dim)';
+    row.innerHTML = `
+      <div>
+        <div class="user-name">${node.name}
+          <span class="badge ${node.online?'online':'offline'}">${node.online?'EN L':'HORS L'}</span>
+        </div>
+        <div class="user-addr">${shortAddr(node.address)} · <span class="conn-count">${node.connectionCount()} connexions</span></div>
+      </div>
+      <div>
+        <div class="balance">${node.balanceOf(node.address)}</div>
+        <div style="font-size:9px;color:var(--muted);text-align:right;">${node.ledger.size} blocs</div>
+      </div>`;
+    list.appendChild(row);
+  }
+
+  // --- Sélecteur de vue ---
+  const viewSel = document.getElementById('view-node');
+  const prevView = viewSel.value;
+  viewSel.innerHTML = [...sim.nodes.values()].map(n =>
+    `<option value="${n.address}" ${n.address===sim.selectedAddress?'selected':''}>${n.online?'🟢':'🔴'} ${n.name}</option>`
+  ).join('');
+  if (viewSel.value !== prevView) changeView();
+
+  // --- Sélecteurs de transaction ---
+  for (const selId of ['tx-from','tx-to']) {
+    const sel = document.getElementById(selId);
+    const prev = sel.value;
+    sel.innerHTML = [...sim.nodes.values()].filter(n=>n.online).map(n =>
+      `<option value="${n.address}">${n.name} (${n.balanceOf(n.address)})</option>`
+    ).join('');
+    if ([...sel.options].some(o=>o.value===prev)) sel.value = prev;
+    else if (selId === 'tx-from' && sim.selected) sel.value = sim.selected.address;
+  }
+
+  // --- Infos nœud sélectionné ---
+  const info = document.getElementById('node-info');
+  const sel = sim.selected;
+  if (sel) {
+    info.innerHTML = `
+      <div style="display:flex;justify-content:space-between;align-items:center;">
+        <div><b>${sel.name}</b> <span class="badge ${sel.online?'online':'offline'}">${sel.online?'EN LIGNE':'HORS LIGNE'}</span></div>
+        <div style="font-family:var(--mono);font-size:10px;color:var(--muted);">${shortAddr(sel.address)}</div>
+      </div>
+      <div style="display:flex;gap:12px;margin-top:6px;font-size:12px;">
+        <span>💰 <b style="color:var(--success);">${sel.balanceOf(sel.address)}</b> DORO</span>
+        <span>🔢 Nonce: <b>${sel.lastNonce.get(sel.address)||0}</b></span>
+        <span>📒 Ledger: <b>${sel.ledger.size}</b> blocs</span>
+        <span>🔗 Pairs: <b>${sel.connectionCount()}</b></span>
+      </div>
+      <div style="display:flex;gap:6px;margin-top:6px;">
+        <button class="small secondary" onclick="sim.toggleNode('${sel.address}');render();">${sel.online?'🔴 Déconnecter':'🟢 Connecter'}</button>
+      </div>
+    `;
+  } else {
+    info.innerHTML = '<div class="empty">Sélectionne un nœud</div>';
+  }
+
+  // --- Ledger du nœud sélectionné ---
+  const body = document.getElementById('ledger-body');
+  const empty = document.getElementById('ledger-empty');
+  document.getElementById('ledger-count').textContent = sel ? `(${sel.ledger.size} blocs)` : '';
+  if (sel && sel.ledger.size) {
+    empty.style.display = 'none';
+    body.innerHTML = [...sel.ledger.values()].slice(-50).reverse().map(tx => {
+      const kind = sel.isMint(tx.from) ? 'mint' : tx.type;
+      return `<tr><td><span class="pill ${kind}">${kind}</span></td><td>${nameOf(tx.from)}</td><td>${nameOf(tx.to)}</td><td>${tx.amount}</td></tr>`;
+    }).join('');
+  } else {
+    empty.style.display = 'block';
+    body.innerHTML = '';
+  }
+
+  // --- Messages ---
+  const msgBox = document.getElementById('messages-box');
+  document.getElementById('msg-count').textContent = sel ? `(${sel.messages.length} messages)` : '';
+  if (sel && sel.messages.length) {
+    msgBox.innerHTML = sel.messages.slice(-30).reverse().map(m =>
+      `<div class="msg-bubble"><div class="msg-from">${m.fromName || shortAddr(m.from)} · ${new Date(m.timestamp).toLocaleTimeString('fr-FR')}</div>${m.text}</div>`
+    ).join('');
+  } else {
+    msgBox.innerHTML = '<div class="empty">Aucun message.</div>';
+  }
+
+  // --- Marché OTC ---
+  const orderBody = document.getElementById('order-body');
+  const ordersEmpty = document.getElementById('orders-empty');
+  const allOrders = sel ? [...sel.knownOrders.values()].filter(o => !o.cancelled && o.filled < o.amount) : [];
+  if (allOrders.length) {
+    ordersEmpty.style.display = 'none';
+    orderBody.innerHTML = allOrders.slice(-20).map(o =>
+      `<tr><td><span class="pill ${o.side}">${o.side}</span></td><td>${o.nodeName}</td><td>${o.amount - o.filled}</td><td>${o.price}</td></tr>`
+    ).join('');
+  } else {
+    ordersEmpty.style.display = 'block';
+    orderBody.innerHTML = '';
+  }
+
+  // --- Trades ---
+  const tradeBody = document.getElementById('trade-body');
+  const tradesEmpty = document.getElementById('trades-empty');
+  const allTrades = sel ? sel.knownTrades : [];
+  document.getElementById('trade-count').textContent = `(${allTrades.length})`;
+  if (allTrades.length) {
+    tradesEmpty.style.display = 'none';
+    tradeBody.innerHTML = allTrades.slice(-15).reverse().map(t =>
+      `<tr><td>${t.sellerName}</td><td>${t.buyerName}</td><td>${t.amount}</td><td>${t.price}</td></tr>`
+    ).join('');
+  } else {
+    tradesEmpty.style.display = 'block';
+    tradeBody.innerHTML = '';
+  }
+
+  // --- Métriques ---
+  const elapsed = (Date.now() - perfMetrics.startTime) / 1000;
+  const tps = elapsed > 0 ? (perfMetrics.txTotal / elapsed).toFixed(1) : '0';
+  const mps = elapsed > 0 ? (perfMetrics.msgTotal / elapsed).toFixed(1) : '0';
+  document.getElementById('live-metrics').innerHTML = `
+    <span>📦 TPS: <b>${tps}</b></span>
+    <span>💬 Msg/s: <b>${mps}</b></span>
+    <span>✅ OK: <b style="color:var(--success)">${perfMetrics.txOk}</b></span>
+    <span>❌ REJ: <b style="color:var(--error)">${perfMetrics.txRej}</b></span>
+    <span>🤝 Trades: <b>${perfMetrics.tradeTotal}</b></span>
+    <span>🕒 ${Math.floor(elapsed)}s</span>
+  `;
+
+  updateLogUI();
+}
+
+function nameOf(addr){
+  if (addr === MINT_ADDRESS) return '🌱 mint';
+  const n = sim.nodes.get(addr);
+  return n ? n.name : shortAddr(addr);
+}
+
+// ============================================================
+// Initialisation + auto-start
+// ============================================================
+// Créer 4 nœuds de démonstration
+const demoNodes = ['Alice', 'Bob', 'Charlie', 'Diana'];
+for (const name of demoNodes) {
+  const node = sim.addNode(name);
+}
+// Créer quelques connexions manuelles pour assurer un maillage
+const addrs = [...sim.nodes.keys()];
+for (let i = 0; i < addrs.length; i++) {
+  for (let j = i + 1; j < addrs.length; j++) {
+    sim.nodes.get(addrs[i]).connectedTo.add(addrs[j]);
+    sim.nodes.get(addrs[j]).connectedTo.add(addrs[i]);
+  }
+}
+// Créditer Alice de la genesis
+const alice = [...sim.nodes.values()][0];
+const genesisTx = { id:newId('genesis'), type:TxType.SEND, from:MINT_ADDRESS, to:alice.address, amount:50000000000, nonce:0 };
+alice.addValidated(genesisTx);
+perfMetrics.txTotal++;
+netLog(`🌱 Genesis minted → ${alice.name} (50 000 000 000 DORO)`, 'ok');
+
+// Démarrer les boucles auto
+sim.startAuto();
+
+// Boucle de métriques (mise à jour TPS toutes les 2s)
+setInterval(() => {
+  perfMetrics.tradeTotal = [...sim.nodes.values()].reduce((a,n) => a + n.knownTrades.length, 0);
+  render();
+}, 1000);
+
+render();
+netLog('🚀 Simulateur multi-nœuds prêt ! 4 nœuds de démo créés.', 'info');
+netLog('💡 Utilise le sélecteur "Vue depuis" pour voir le ledger de chaque nœud.', 'info');
+netLog('⚡ Active le chaos pour observer les divergences entre nœuds.', 'info');
 </script>
 </body>
 </html>
