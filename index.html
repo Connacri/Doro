@@ -1,0 +1,474 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Doro — Bac à sable du ledger</title>
+<style>
+  :root{
+    --bg:#0F0F1A; --surface:#1A1A2E; --surface2:#20213a;
+    --primary:#6C5CE7; --primary-dim:#4a3fb0;
+    --success:#00D084; --error:#FF4D4D; --warn:#F5A623;
+    --text:#ffffff; --muted:#9a9ab0;
+    --mono:'JetBrains Mono','SF Mono',Consolas,monospace;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0; background:var(--bg); color:var(--text);
+    font-family:'Inter',-apple-system,sans-serif;
+    min-height:100vh;
+  }
+  header{
+    padding:20px 24px; border-bottom:1px solid #ffffff12;
+    display:flex; align-items:baseline; gap:12px; flex-wrap:wrap;
+  }
+  header h1{ font-size:18px; margin:0; font-weight:700; letter-spacing:-.2px; }
+  header .tag{
+    font-family:var(--mono); font-size:11px; color:var(--muted);
+    background:var(--surface); padding:3px 8px; border-radius:5px;
+    border:1px solid #ffffff10;
+  }
+  .warn-banner{
+    background:linear-gradient(90deg,#F5A62322,#F5A62308);
+    border-bottom:1px solid #F5A62333;
+    color:#F5A623; font-size:12.5px; padding:9px 24px;
+    font-family:var(--mono);
+  }
+  main{
+    display:grid; grid-template-columns: 300px 1fr 380px;
+    gap:1px; background:#ffffff10;
+  }
+  @media (max-width: 980px){ main{grid-template-columns:1fr;} }
+  section{ background:var(--bg); padding:18px; }
+  h2{
+    font-size:12px; text-transform:uppercase; letter-spacing:.08em;
+    color:var(--muted); margin:0 0 14px 0; font-weight:600;
+  }
+  .card{
+    background:var(--surface); border-radius:10px; padding:12px 14px;
+    margin-bottom:10px; border:1px solid #ffffff08;
+  }
+  .user-row{
+    display:flex; justify-content:space-between; align-items:center;
+    padding:8px 0; border-bottom:1px solid #ffffff08; font-size:13px;
+  }
+  .user-row:last-child{border-bottom:none;}
+  .user-name{ font-weight:600; }
+  .user-addr{ font-family:var(--mono); font-size:10.5px; color:var(--muted); }
+  .balance{ font-family:var(--mono); font-weight:700; color:var(--success); }
+  button{
+    background:var(--primary); color:#fff; border:none; border-radius:7px;
+    padding:9px 14px; font-size:13px; font-weight:600; cursor:pointer;
+    transition:transform .1s, background .15s; width:100%;
+  }
+  button:hover{ background:#7d6ef0; }
+  button:active{ transform:scale(.98); }
+  button.secondary{ background:var(--surface2); color:var(--text); border:1px solid #ffffff15; }
+  button.secondary:hover{ background:#2a2b4a; }
+  button.danger{ background:#3a1f1f; color:var(--error); border:1px solid #FF4D4D33; }
+  button:disabled{ opacity:.35; cursor:not-allowed; }
+  input, select{
+    width:100%; background:var(--surface2); border:1px solid #ffffff15;
+    color:var(--text); border-radius:7px; padding:8px 10px; font-size:13px;
+    margin-bottom:8px; font-family:inherit;
+  }
+  label{ font-size:11.5px; color:var(--muted); display:block; margin-bottom:4px; }
+  .field{ margin-bottom:12px; }
+  .scenario-btn{ margin-bottom:8px; text-align:left; }
+  .scenario-btn small{ display:block; font-weight:400; opacity:.75; font-size:11px; margin-top:2px; }
+  #log{
+    font-family:var(--mono); font-size:12px; line-height:1.6;
+    max-height:340px; overflow-y:auto; background:#000000a0;
+    border-radius:8px; padding:10px 12px; border:1px solid #ffffff08;
+  }
+  .log-line{ padding:3px 0; border-bottom:1px solid #ffffff06; }
+  .ok{ color:var(--success); }
+  .rej{ color:var(--error); }
+  .pend{ color:var(--warn); }
+  #ledger-table{ width:100%; border-collapse:collapse; font-size:12px; font-family:var(--mono); }
+  #ledger-table th{
+    text-align:left; color:var(--muted); font-weight:600; font-size:10.5px;
+    text-transform:uppercase; padding:6px 8px; border-bottom:1px solid #ffffff15;
+  }
+  #ledger-table td{ padding:6px 8px; border-bottom:1px solid #ffffff08; }
+  .pill{ padding:2px 7px; border-radius:20px; font-size:10px; font-weight:700; }
+  .pill.send{ background:#6C5CE722; color:#a89bff; }
+  .pill.receive{ background:#00D08422; color:var(--success); }
+  .pill.mint{ background:#F5A62322; color:var(--warn); }
+  .divider{ height:1px; background:#ffffff10; margin:16px 0; }
+  .toggle-row{ display:flex; align-items:center; gap:8px; font-size:12.5px; color:var(--muted); margin-bottom:10px; }
+  .empty{ color:var(--muted); font-size:12px; text-align:center; padding:20px 0; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>🔗 Doro — Bac à sable du ledger</h1>
+  <span class="tag">JS · logique seule</span>
+  <span class="tag">pas de vraie crypto</span>
+  <span class="tag">pas de vrai P2P</span>
+</header>
+<div class="warn-banner">
+  ⚠️ Ceci reproduit fidèlement les règles de DagEngine/LedgerBalances (send/receive, nonce, genesis unique, file d'attente des receive orphelins) — mais en JS, sans Ed25519 réel ni WebRTC. Sert à valider le comportement vite ; le vrai test reste à faire sur ton app.
+</div>
+
+<main>
+  <!-- COLONNE 1 : utilisateurs -->
+  <section>
+    <h2>Utilisateurs de test</h2>
+    <div id="users-list"></div>
+    <div class="field" style="margin-top:12px;">
+      <label>Nom du nouvel utilisateur</label>
+      <input id="new-user-name" placeholder="ex: Alice">
+      <button onclick="createUser()">+ Créer un utilisateur</button>
+    </div>
+    <div class="divider"></div>
+    <h2>Trésorerie / Genesis</h2>
+    <div class="field">
+      <label>Compte à créditer de l'allocation totale</label>
+      <select id="genesis-target"></select>
+      <button class="secondary" id="mint-btn" onclick="mintGenesis()">🌱 Miner la genesis (une fois)</button>
+    </div>
+  </section>
+
+  <!-- COLONNE 2 : actions -->
+  <section>
+    <h2>Envoyer un paiement</h2>
+    <div class="card">
+      <div class="field">
+        <label>De</label>
+        <select id="send-from"></select>
+      </div>
+      <div class="field">
+        <label>Vers</label>
+        <select id="send-to"></select>
+      </div>
+      <div class="field">
+        <label>Montant</label>
+        <input id="send-amount" type="number" value="10" min="1">
+      </div>
+      <div class="toggle-row">
+        <input type="checkbox" id="manual-mode" style="width:auto;margin:0;">
+        <label style="margin:0;" for="manual-mode">Mode manuel — ne pas auto-générer le <code>receive</code> (pour tester le retard réseau)</label>
+      </div>
+      <button onclick="doSend()">Envoyer (créer un bloc <code>send</code>)</button>
+    </div>
+
+    <div class="divider"></div>
+    <h2>Scénarios guidés</h2>
+    <button class="secondary scenario-btn" onclick="scenarioReplay()">
+      ↻ Tenter un rejeu (même nonce)
+      <small>Renvoie exactement la même tx déjà acceptée → rejectedReplay</small>
+    </button>
+    <button class="secondary scenario-btn" onclick="scenarioOverspend()">
+      💸 Dépenser plus que le solde
+      <small>Montant &gt; solde réel → rejectedInsufficientBalance</small>
+    </button>
+    <button class="secondary scenario-btn" onclick="scenarioDoubleGenesis()">
+      🌱 Miner la genesis une 2ᵉ fois
+      <small>Un mint déjà accepté → rejectedDuplicateGenesis</small>
+    </button>
+    <button class="secondary scenario-btn" onclick="scenarioLateSend()">
+      ⏳ Receive orphelin → send tardif
+      <small>Crée un receive dont le send n'existe pas encore, puis fait "arriver" le send → rejeu automatique</small>
+    </button>
+    <button class="secondary scenario-btn" onclick="scenarioDoubleClaim()">
+      🎯 Réclamer un send déjà réclamé
+      <small>2ᵉ receive sur le même send → rejectedDuplicateReceive</small>
+    </button>
+
+    <div class="divider"></div>
+    <button class="danger" onclick="resetAll()">↺ Réinitialiser tout le bac à sable</button>
+  </section>
+
+  <!-- COLONNE 3 : ledger + journal -->
+  <section>
+    <h2>Ledger (blocs acceptés)</h2>
+    <div style="max-height:220px; overflow-y:auto; margin-bottom:16px;">
+      <table id="ledger-table">
+        <thead><tr><th>Type</th><th>De</th><th>Vers</th><th>Montant</th></tr></thead>
+        <tbody id="ledger-body"></tbody>
+      </table>
+      <div id="ledger-empty" class="empty">Aucun bloc encore.</div>
+    </div>
+
+    <h2>Journal des événements</h2>
+    <div id="log"></div>
+  </section>
+</main>
+
+<script>
+// ============================================================
+// Portage JS fidèle de DagEngine / LedgerBalances / TxType.
+// Même noms de résultats (rejectedX) que le Dart d'origine, pour
+// qu'un rejet ici pointe directement vers la même règle là-bas.
+// ============================================================
+
+const TxType = { SEND: 'send', RECEIVE: 'receive' };
+const MINT_ADDRESS = '0xMINT_GENESIS_TREASURY';
+
+let users = [];       // {name, address}
+let ledger = new Map();          // id -> tx
+let lastNonce = new Map();       // address -> nonce
+let balances = new Map();        // address -> amount (int)
+let claimedSendIds = new Set();
+let pendingReceives = new Map(); // linkedSendId -> [tx]
+let genesisMinted = false;
+let idCounter = 1;
+let pendingLateSend = null; // pour le scénario "receive orphelin"
+
+function isMint(addr){ return addr === MINT_ADDRESS; }
+function newId(prefix){ return `${prefix}-${idCounter++}`; }
+function balanceOf(addr){ return balances.get(addr) || 0; }
+function canSpend(addr, amount){ return isMint(addr) ? true : balanceOf(addr) >= amount; }
+function debit(addr, amount){ if(!isMint(addr)) balances.set(addr, balanceOf(addr) - amount); }
+function credit(addr, amount){ balances.set(addr, balanceOf(addr) + amount); }
+
+/** Coeur des règles — copie 1:1 de DagEngine.addValidated. */
+function addValidated(tx){
+  if (ledger.has(tx.id)) return 'alreadyKnown';
+
+  if (isMint(tx.from)) {
+    if (genesisMinted) return 'rejectedDuplicateGenesis';
+  } else {
+    const last = lastNonce.get(tx.from);
+    if (last !== undefined && tx.nonce <= last) return 'rejectedReplay';
+
+    if (tx.type === TxType.SEND) {
+      if (!canSpend(tx.from, tx.amount)) return 'rejectedInsufficientBalance';
+    } else {
+      const linkedId = tx.linkedSendId;
+      if (!linkedId) return 'rejectedInvalidReceive';
+      const sendTx = ledger.get(linkedId);
+      if (!sendTx) {
+        if (!pendingReceives.has(linkedId)) pendingReceives.set(linkedId, []);
+        pendingReceives.get(linkedId).push(tx);
+        return 'rejectedUnknownSend';
+      }
+      if (sendTx.type !== TxType.SEND || sendTx.to !== tx.from) return 'rejectedInvalidReceive';
+      if (claimedSendIds.has(linkedId)) return 'rejectedDuplicateReceive';
+      if (sendTx.amount !== tx.amount) return 'rejectedInvalidReceive';
+    }
+  }
+
+  ledger.set(tx.id, tx);
+  if (isMint(tx.from)) {
+    genesisMinted = true;
+    credit(tx.to, tx.amount);
+  } else {
+    lastNonce.set(tx.from, tx.nonce);
+    if (tx.type === TxType.SEND) {
+      debit(tx.from, tx.amount);
+    } else {
+      credit(tx.from, tx.amount);
+      claimedSendIds.add(tx.linkedSendId);
+    }
+  }
+
+  if (tx.type === TxType.SEND) {
+    const waiting = pendingReceives.get(tx.id);
+    if (waiting) {
+      pendingReceives.delete(tx.id);
+      for (const rx of waiting) {
+        const r = addValidated(rx);
+        if (r === 'accepted') logLine(`↻ receive en attente débloqué automatiquement : ${rx.id}`, 'pend');
+      }
+    }
+    // auto-claim, comme WalletKernel._autoClaim côté app
+    if (!document.getElementById('manual-mode').checked) {
+      autoClaim(tx);
+    }
+  }
+
+  return 'accepted';
+}
+
+function autoClaim(sendTx){
+  const nonce = (lastNonce.get(sendTx.to) || 0) + 1;
+  const receiveTx = {
+    id: newId('receive'), type: TxType.RECEIVE,
+    from: sendTx.to, to: sendTx.to, amount: sendTx.amount,
+    nonce, linkedSendId: sendTx.id,
+  };
+  const r = addValidated(receiveTx);
+  logResult(receiveTx, r);
+}
+
+const RESULT_LABEL = {
+  accepted: ['✔ accepté', 'ok'],
+  alreadyKnown: ['= déjà connu', 'pend'],
+  rejectedReplay: ['✘ rejectedReplay — nonce déjà utilisé (rejeu)', 'rej'],
+  rejectedInsufficientBalance: ['✘ rejectedInsufficientBalance — solde insuffisant', 'rej'],
+  rejectedDuplicateGenesis: ['✘ rejectedDuplicateGenesis — genesis déjà mintée', 'rej'],
+  rejectedUnknownSend: ['⏳ rejectedUnknownSend — send pas encore connu, mis en attente', 'pend'],
+  rejectedInvalidReceive: ['✘ rejectedInvalidReceive — receive mal formé/mal dirigé', 'rej'],
+  rejectedDuplicateReceive: ['✘ rejectedDuplicateReceive — ce send est déjà réclamé', 'rej'],
+};
+
+function logLine(text, cls){
+  const el = document.getElementById('log');
+  const div = document.createElement('div');
+  div.className = 'log-line ' + (cls||'');
+  const time = new Date().toLocaleTimeString('fr-FR');
+  div.innerHTML = `<span style="color:#666">${time}</span> ${text}`;
+  el.prepend(div);
+}
+
+function shortAddr(a){ return a.length>14 ? a.slice(0,6)+'…'+a.slice(-4) : a; }
+
+function logResult(tx, result){
+  const [label, cls] = RESULT_LABEL[result] || [result, ''];
+  const kind = tx.type === TxType.SEND && isMint(tx.from) ? 'mint' : tx.type;
+  logLine(`<b>${kind}</b> ${shortAddr(tx.from)} → ${shortAddr(tx.to)} (${tx.amount}) : ${label}`, cls);
+  render();
+}
+
+// ---------------- UI glue ----------------
+
+function createUser(){
+  const nameInput = document.getElementById('new-user-name');
+  const name = nameInput.value.trim() || `Utilisateur ${users.length+1}`;
+  const address = '0x' + Math.random().toString(16).slice(2,10) + Math.random().toString(16).slice(2,10);
+  users.push({name, address});
+  balances.set(address, 0);
+  nameInput.value = '';
+  logLine(`👤 Utilisateur créé : <b>${name}</b> (${shortAddr(address)})`, '');
+  render();
+}
+
+function mintGenesis(){
+  const target = document.getElementById('genesis-target').value;
+  if (!target) return;
+  const tx = { id: newId('genesis'), type: TxType.SEND, from: MINT_ADDRESS, to: target, amount: 50000000000, nonce: 0 };
+  const r = addValidated(tx);
+  logResult(tx, r);
+}
+
+function doSend(){
+  const from = document.getElementById('send-from').value;
+  const to = document.getElementById('send-to').value;
+  const amount = parseInt(document.getElementById('send-amount').value, 10);
+  if (!from || !to || from === to || !amount || amount <= 0) {
+    logLine('⚠️ Sélectionne deux utilisateurs différents et un montant valide.', 'rej');
+    return;
+  }
+  const nonce = (lastNonce.get(from) || 0) + 1;
+  const tx = { id: newId('send'), type: TxType.SEND, from, to, amount, nonce };
+  const r = addValidated(tx);
+  logResult(tx, r);
+  window._lastSend = tx; // pour les scénarios guidés
+}
+
+function scenarioReplay(){
+  if (!window._lastSend) { logLine('ℹ️ Envoie d\'abord un paiement normal, puis relance ce scénario.', 'pend'); return; }
+  const original = window._lastSend;
+  const replay = { id: newId('replay'), type: TxType.SEND, from: original.from, to: original.to, amount: original.amount, nonce: original.nonce };
+  const r = addValidated(replay);
+  logResult(replay, r);
+}
+
+function scenarioOverspend(){
+  const from = document.getElementById('send-from').value;
+  const to = document.getElementById('send-to').value;
+  if (!from || !to || from === to) { logLine('⚠️ Choisis deux utilisateurs différents dans "Envoyer un paiement" d\'abord.', 'rej'); return; }
+  const tooMuch = balanceOf(from) + 999999;
+  const nonce = (lastNonce.get(from) || 0) + 1;
+  const tx = { id: newId('overspend'), type: TxType.SEND, from, to, amount: tooMuch, nonce };
+  const r = addValidated(tx);
+  logResult(tx, r);
+}
+
+function scenarioDoubleGenesis(){
+  const target = document.getElementById('genesis-target').value;
+  if (!target) return;
+  const tx = { id: newId('genesis2'), type: TxType.SEND, from: MINT_ADDRESS, to: target, amount: 50000000000, nonce: 0 };
+  const r = addValidated(tx);
+  logResult(tx, r);
+}
+
+function scenarioLateSend(){
+  const from = document.getElementById('send-from').value;
+  const to = document.getElementById('send-to').value;
+  const amount = parseInt(document.getElementById('send-amount').value, 10) || 10;
+  if (!from || !to || from === to) { logLine('⚠️ Choisis deux utilisateurs différents dans "Envoyer un paiement" d\'abord.', 'rej'); return; }
+
+  const futureSendId = newId('send-future');
+  const nonce = (lastNonce.get(from) || 0) + 1;
+  const orphanReceive = { id: newId('receive-orphan'), type: TxType.RECEIVE, from: to, to, amount, nonce: (lastNonce.get(to)||0)+1, linkedSendId: futureSendId };
+
+  logLine(`🧪 Scénario : on injecte le <b>receive</b> AVANT que son <b>send</b> (${futureSendId}) n'existe...`, '');
+  const r1 = addValidated(orphanReceive);
+  logResult(orphanReceive, r1);
+
+  setTimeout(() => {
+    logLine(`🧪 ...puis, 1.5s plus tard, le <b>send</b> correspondant arrive enfin (simulé plus lent que le receive) :`, '');
+    const lateSend = { id: futureSendId, type: TxType.SEND, from, to, amount, nonce };
+    const r2 = addValidated(lateSend);
+    logResult(lateSend, r2);
+  }, 1500);
+}
+
+function scenarioDoubleClaim(){
+  if (!window._lastSend) { logLine('ℹ️ Envoie d\'abord un paiement normal (en mode manuel, pour garder le send non réclamé), puis relance ce scénario.', 'pend'); return; }
+  const sendTx = window._lastSend;
+  const nonce = (lastNonce.get(sendTx.to) || 0) + 1;
+  const rx1 = { id: newId('rx1'), type: TxType.RECEIVE, from: sendTx.to, to: sendTx.to, amount: sendTx.amount, nonce, linkedSendId: sendTx.id };
+  logResult(rx1, addValidated(rx1));
+  const rx2 = { id: newId('rx2'), type: TxType.RECEIVE, from: sendTx.to, to: sendTx.to, amount: sendTx.amount, nonce: nonce+1, linkedSendId: sendTx.id };
+  logResult(rx2, addValidated(rx2));
+}
+
+function resetAll(){
+  users = []; ledger.clear(); lastNonce.clear(); balances.clear();
+  claimedSendIds.clear(); pendingReceives.clear(); genesisMinted = false;
+  idCounter = 1; window._lastSend = null;
+  document.getElementById('log').innerHTML = '';
+  logLine('↺ Bac à sable réinitialisé.', '');
+  render();
+}
+
+function render(){
+  // Liste des utilisateurs + soldes
+  const usersList = document.getElementById('users-list');
+  usersList.innerHTML = users.length ? '' : '<div class="empty">Aucun utilisateur. Crée-en au moins deux.</div>';
+  for (const u of users) {
+    const row = document.createElement('div');
+    row.className = 'user-row';
+    row.innerHTML = `<div><div class="user-name">${u.name}</div><div class="user-addr">${shortAddr(u.address)}</div></div><div class="balance">${balanceOf(u.address)}</div>`;
+    usersList.appendChild(row);
+  }
+
+  // Selects
+  for (const selId of ['genesis-target','send-from','send-to']) {
+    const sel = document.getElementById(selId);
+    const prev = sel.value;
+    sel.innerHTML = '<option value="">—</option>' + users.map(u => `<option value="${u.address}">${u.name}</option>`).join('');
+    if (users.some(u => u.address === prev)) sel.value = prev;
+  }
+  document.getElementById('mint-btn').disabled = genesisMinted;
+
+  // Ledger
+  const body = document.getElementById('ledger-body');
+  const rows = [...ledger.values()];
+  document.getElementById('ledger-empty').style.display = rows.length ? 'none' : 'block';
+  body.innerHTML = rows.map(tx => {
+    const kind = isMint(tx.from) ? 'mint' : tx.type;
+    return `<tr>
+      <td><span class="pill ${kind}">${kind}</span></td>
+      <td>${nameOf(tx.from)}</td>
+      <td>${nameOf(tx.to)}</td>
+      <td>${tx.amount}</td>
+    </tr>`;
+  }).join('');
+}
+
+function nameOf(addr){
+  if (isMint(addr)) return '🌱 mint';
+  const u = users.find(u => u.address === addr);
+  return u ? u.name : shortAddr(addr);
+}
+
+render();
+</script>
+</body>
+</html>

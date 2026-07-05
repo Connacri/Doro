@@ -8,6 +8,8 @@ import '../../dag/transaction_model.dart';
 import '../../consensus/consensus_engine.dart';
 import '../../wallet/wallet_core.dart';
 import '../../storage/repositories/tx_repository.dart';
+import '../../storage/secure/keypair_store.dart';
+import '../../utils/id_generator.dart';
 import '../../utils/node_identity.dart';
 import '../../p2p/webrtc_engine.dart';
 import '../../utils/logger.dart';
@@ -65,6 +67,22 @@ class WalletKernel {
 
     dag.onCommit = (tx) {
       notifyChange();
+      // Un `send` qui m'est destiné (compte que je possède localement) :
+      // je réclame automatiquement les fonds avec un `receive` — sans ça,
+      // l'utilisateur devrait manuellement "accepter" chaque paiement
+      // reçu, alors que l'ancien modèle créditait déjà tout seul.
+      if (tx.type == TxType.send && wallet.get(tx.to) != null && !dag.isSendClaimed(tx.id)) {
+        _autoClaim(tx);
+      }
+    };
+
+    // Un `receive` qui attendait son `send` (arrivé en retard, ex: via
+    // un chemin de gossip plus long) vient d'être accepté — personne
+    // d'autre ne le persisterait/rediffuserait, `_handleIncomingTx` a
+    // déjà rendu la main depuis longtemps quand ça arrive.
+    dag.onPendingReceiveResolved = (tx) {
+      p2p.broadcast({"type": "tx", ...tx.toJson()});
+      txRepo.save(tx);
     };
   }
 
@@ -92,6 +110,63 @@ class WalletKernel {
       p2p.broadcast(data);
       await selfApprove(tx.id);
       await txRepo.save(tx);
+    }
+  }
+
+  /// Construit, signe et diffuse le `receive` qui réclame `sendTx` — ce
+  /// bloc appartient à la chaîne du DESTINATAIRE (`sendTx.to`), c'est
+  /// donc SA clé privée (pas la mienne au sens `identity`) qu'il faut
+  /// utiliser pour signer, chargée via `KeypairStore`.
+  Future<void> _autoClaim(Transaction sendTx) async {
+    final recipient = sendTx.to;
+    final recipientWallet = wallet.get(recipient);
+    if (recipientWallet == null) return;
+
+    final keyPair = await KeypairStore.load(recipient);
+    if (keyPair == null) {
+      Logger.warn("Pas de clé privée locale pour $recipient — impossible de réclamer ${sendTx.id}");
+      return;
+    }
+
+    final lastKnown = dag.lastNonceOf(recipient);
+    final nonce = (lastKnown > recipientWallet.nonce ? lastKnown : recipientWallet.nonce) + 1;
+
+    final unsigned = Transaction(
+      id: IdGenerator.generateId("receive"),
+      type: TxType.receive,
+      from: recipient,
+      to: recipient,
+      amount: sendTx.amount,
+      parents: dag.tips().take(2).toList(),
+      timestamp: DateTime.now().millisecondsSinceEpoch,
+      nonce: nonce,
+      senderPublicKey: recipientWallet.publicKey,
+      signature: "",
+      linkedSendId: sendTx.id,
+    );
+
+    final sig = await crypto.sign(utf8.encode(unsigned.hash), keyPair: keyPair);
+    final receiveTx = Transaction(
+      id: unsigned.id,
+      type: TxType.receive,
+      from: unsigned.from,
+      to: unsigned.to,
+      amount: unsigned.amount,
+      parents: unsigned.parents,
+      timestamp: unsigned.timestamp,
+      nonce: unsigned.nonce,
+      senderPublicKey: unsigned.senderPublicKey,
+      signature: _bytesToHex(sig.bytes),
+      linkedSendId: unsigned.linkedSendId,
+    );
+
+    final result = dag.addValidated(receiveTx);
+    if (result == DagAcceptResult.accepted) {
+      recipientWallet.nonce = nonce;
+      p2p.broadcast({"type": "tx", ...receiveTx.toJson()});
+      await txRepo.save(receiveTx);
+    } else {
+      Logger.warn("Auto-claim de ${sendTx.id} rejeté localement : $result");
     }
   }
 
@@ -234,7 +309,11 @@ class WalletKernel {
   }
 
   void _creditIfFinalizedHere(Transaction tx) {
-    final credited = wallet.creditIfLocal(tx.to, tx.amount);
+    // Avec le modèle send/receive, un `send` ne crédite plus personne
+    // directement — seul un `receive` (bloc de la chaîne du compte qui
+    // reçoit, donc `tx.from` ici) crédite réellement un solde.
+    if (tx.type != TxType.receive) return;
+    final credited = wallet.creditIfLocal(tx.from, tx.amount);
     if (credited) {
       notifyChange();
     }
@@ -249,11 +328,27 @@ class WalletKernel {
     return result;
   }
 
+  /// Recharge l'historique persisté localement. Les transactions
+  /// enregistrées AVANT l'introduction du modèle send/receive sont
+  /// relues comme de simples `send` (voir TxRepository, pas de marqueur
+  /// de type) — sous l'ancien modèle, elles créditaient directement leur
+  /// destinataire. Pour ne pas perdre ces fonds déjà reçus, on synthétise
+  /// automatiquement le `receive` manquant pour toute adresse que CET
+  /// appareil possède localement (migration one-shot, silencieuse).
   Future<void> loadPersistedLedger() async {
     await txRepo.load();
+    final toMigrate = <Transaction>[];
     for (final tx in txRepo.all()) {
-      dag.addValidated(tx);
-      dag.finality.markFinalized(tx.id);
+      final result = dag.addValidated(tx);
+      if (result == DagAcceptResult.accepted) {
+        dag.finality.markFinalized(tx.id);
+      }
+      if (tx.type == TxType.send && wallet.get(tx.to) != null && !dag.isSendClaimed(tx.id)) {
+        toMigrate.add(tx);
+      }
+    }
+    for (final sendTx in toMigrate) {
+      await _autoClaim(sendTx);
     }
   }
 

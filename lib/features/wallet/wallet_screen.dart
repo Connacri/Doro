@@ -9,6 +9,7 @@ import '../chat/chat_provider.dart';
 import '../chat/chat_screen.dart';
 import '../../core/wallet/genesis.dart';
 import '../../core/wallet/token_config.dart';
+import '../../core/dag/transaction_model.dart';
 
 String formatDoro(BigInt atomicBalance) {
   const decimals = 18;
@@ -211,8 +212,21 @@ class _WalletScreenState extends State<WalletScreen> {
             if (ledger.transactions.isEmpty)
               const Padding(padding: EdgeInsets.all(16), child: Text("Aucune transaction pour l'instant.")),
             ...ledger.transactions.map((tx) {
-              final isSent = tx.from == myAddress;
-              final counterparty = isSent ? tx.to : tx.from;
+              // Un `receive` a `from == to == moi` par convention (bloc
+              // de MA chaîne qui réclame un paiement) — sans ce cas
+              // particulier, `isSent` valait `true` pour CHAQUE paiement
+              // REÇU (puisque `tx.from == myAddress`), affichant à tort
+              // toute réception comme un envoi vers moi-même.
+              final bool isSent;
+              final String counterparty;
+              if (tx.type == TxType.receive) {
+                isSent = false;
+                final linkedSend = ledger.dag.ledger[tx.linkedSendId];
+                counterparty = linkedSend?.from ?? tx.from;
+              } else {
+                isSent = tx.from == myAddress;
+                counterparty = isSent ? tx.to : tx.from;
+              }
               return ListTile(
                 leading: Icon(isSent ? Icons.arrow_upward : Icons.arrow_downward, color: isSent ? Colors.redAccent : Colors.greenAccent),
                 title: Text(counterparty, style: const TextStyle(fontFamily: 'monospace', fontSize: 12), overflow: TextOverflow.ellipsis),

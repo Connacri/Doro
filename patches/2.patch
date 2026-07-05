@@ -1,0 +1,1116 @@
+diff --git a/lib/core/dag/dag_engine.dart b/lib/core/dag/dag_engine.dart
+index 7434ad5..7f42be2 100644
+--- a/lib/core/dag/dag_engine.dart
++++ b/lib/core/dag/dag_engine.dart
+@@ -11,6 +11,9 @@ enum DagAcceptResult {
+   rejectedReplay,
+   rejectedInsufficientBalance,
+   rejectedDuplicateGenesis,
++  rejectedUnknownSend,
++  rejectedInvalidReceive,
++  rejectedDuplicateReceive,
+ }
+ 
+ class DagEngine {
+@@ -33,6 +36,28 @@ class DagEngine {
+   /// adresses de mint, donc ce garde-fou est nécessaire séparément.
+   bool _genesisMinted = false;
+ 
++  /// Ids des blocs `send` déjà réclamés par un `receive` — un `send` ne
++  /// peut être crédité qu'une seule fois dans tout le réseau.
++  final Set<String> _claimedSendIds = {};
++
++  /// `receive` reçus alors que le `send` qu'ils réclament n'est pas
++  /// encore connu de ce nœud (ex: sur un nœud tiers, si le gossip
++  /// multi-sauts fait arriver le `receive` avant le `send` — rare avec
++  /// des connexions directes, possible sur un réseau maillé plus large).
++  /// Rejoués automatiquement dès que le `send` correspondant arrive (voir
++  /// `addValidated`). Plafonné pour éviter qu'un pair malveillant ne
++  /// fasse grossir cette file indéfiniment avec des `linkedSendId` bidon.
++  final Map<String, List<Transaction>> _pendingReceives = {};
++  static const int _maxPendingReceives = 500;
++  int _pendingReceivesCount = 0;
++
++  /// Appelé quand un `receive` mis en attente est enfin accepté après
++  /// l'arrivée tardive de son `send` — le seul cas où `onCommit` ne
++  /// suffit pas : l'appelant d'origine (`_handleIncomingTx` etc.) a déjà
++  /// rendu la main depuis longtemps, donc personne d'autre ne
++  /// persisterait/rediffuserait ce `receive` sans ce hook dédié.
++  Function(Transaction tx)? onPendingReceiveResolved;
++
+   DagEngine({int requiredConfirmations = 2})
+       : finality = FinalityEngine(requiredConfirmations: requiredConfirmations);
+ 
+@@ -76,25 +101,78 @@ class DagEngine {
+         return DagAcceptResult.rejectedReplay;
+       }
+ 
+-      // Vérification de solde FAISANT AUTORITÉ : personne ne peut
+-      // dépenser plus que ce que le DAG lui reconnaît, quelle que soit
+-      // la validité de sa signature. C'est cette ligne qui rend une
+-      // transaction falsifiée (montant inventé) rejetée par tout le
+-      // réseau, et pas seulement par l'appareil de l'émetteur.
+-      if (!balances.canSpend(tx.from, tx.amount)) {
+-        return DagAcceptResult.rejectedInsufficientBalance;
++      if (tx.type == TxType.send) {
++        // Vérification de solde FAISANT AUTORITÉ, mais qui ne dépend QUE
++        // de la propre chaîne de `tx.from` — jamais de l'historique d'un
++        // AUTRE compte. C'est ce qui élimine l'ambiguïté d'ordre entre
++        // comptes différents : que ce nœud ait déjà vu ou non les
++        // transactions des AUTRES participants n'a aucune importance
++        // pour valider ce `send`-ci.
++        if (!balances.canSpend(tx.from, tx.amount)) {
++          return DagAcceptResult.rejectedInsufficientBalance;
++        }
++      } else {
++        // receive : doit réclamer un `send` réel, qui m'est destiné, pas
++        // déjà réclamé, et d'un montant identique.
++        final linkedId = tx.linkedSendId;
++        if (linkedId == null || linkedId.isEmpty) {
++          return DagAcceptResult.rejectedInvalidReceive;
++        }
++        final sendTx = ledger[linkedId];
++        if (sendTx == null) {
++          // Le `send` référencé n'est pas encore connu de ce nœud : on
++          // met en attente plutôt que de perdre définitivement ce
++          // `receive` — il sera rejoué automatiquement dès que le `send`
++          // arrivera (voir plus bas).
++          if (_pendingReceivesCount >= _maxPendingReceives) {
++            return DagAcceptResult.rejectedUnknownSend;
++          }
++          _pendingReceives.putIfAbsent(linkedId, () => []).add(tx);
++          _pendingReceivesCount++;
++          return DagAcceptResult.rejectedUnknownSend;
++        }
++        if (sendTx.type != TxType.send || sendTx.to != tx.from) {
++          return DagAcceptResult.rejectedInvalidReceive;
++        }
++        if (_claimedSendIds.contains(linkedId)) {
++          return DagAcceptResult.rejectedDuplicateReceive;
++        }
++        if (sendTx.amount != tx.amount) {
++          return DagAcceptResult.rejectedInvalidReceive;
++        }
+       }
+     }
+ 
+     ledger[tx.id] = tx;
+     if (Genesis.isMintAddress(tx.from)) {
+       _genesisMinted = true;
++      balances.credit(tx.to, tx.amount);
+     } else {
+       _lastNonce[tx.from] = tx.nonce;
++      if (tx.type == TxType.send) {
++        balances.debit(tx.from, tx.amount);
++      } else {
++        balances.credit(tx.from, tx.amount);
++        _claimedSendIds.add(tx.linkedSendId!);
++      }
+     }
+-    balances.apply(tx.from, tx.to, tx.amount);
+     onCommit?.call(tx);
+ 
++    if (tx.type == TxType.send) {
++      // Ce `send` peut débloquer un ou plusieurs `receive` qui
++      // attendaient précisément lui — on les rejoue maintenant.
++      final waiting = _pendingReceives.remove(tx.id);
++      if (waiting != null) {
++        _pendingReceivesCount -= waiting.length;
++        for (final pendingReceive in waiting) {
++          final result = addValidated(pendingReceive);
++          if (result == DagAcceptResult.accepted) {
++            onPendingReceiveResolved?.call(pendingReceive);
++          }
++        }
++      }
++    }
++
+     final pending = _pendingConfirmations.remove(tx.id);
+     if (pending != null) {
+       for (final peerId in pending) {
+@@ -141,6 +219,10 @@ class DagEngine {
+   /// un nonce déjà utilisé et de se faire rejeter par `rejectedReplay`.
+   int lastNonceOf(String address) => _lastNonce[address] ?? 0;
+ 
++  /// Ce `send` a-t-il déjà été réclamé par un `receive` (par moi ou par
++  /// n'importe qui d'autre sur le réseau, tel que je le sais) ?
++  bool isSendClaimed(String sendId) => _claimedSendIds.contains(sendId);
++
+   DagAcceptResult restoreFinalized(Transaction tx) {
+     final result = addValidated(tx);
+     if (result == DagAcceptResult.accepted) {
+diff --git a/lib/core/dag/ledger_balances.dart b/lib/core/dag/ledger_balances.dart
+index 3998aaf..3d70054 100644
+--- a/lib/core/dag/ledger_balances.dart
++++ b/lib/core/dag/ledger_balances.dart
+@@ -27,14 +27,29 @@ class LedgerBalances {
+     return balanceOf(address) >= amount;
+   }
+ 
+-  /// Applique le mouvement : débite l'expéditeur (sauf mint), crédite le
+-  /// destinataire. À appeler UNE SEULE FOIS par transaction, uniquement
+-  /// après validation complète (structure + signature + solde + nonce).
+-  void apply(String from, String to, BigInt amount) {
+-    if (!Genesis.isMintAddress(from)) {
+-      _balances[from] = balanceOf(from) - amount;
++  /// Débite `address` de `amount` — utilisé par un bloc `send` ACCEPTÉ.
++  /// Ne crédite personne : les fonds restent "en attente" jusqu'à ce
++  /// qu'un `receive` correspondant les réclame (voir DagEngine).
++  void debit(String address, BigInt amount) {
++    if (!Genesis.isMintAddress(address)) {
++      _balances[address] = balanceOf(address) - amount;
+     }
+-    _balances[to] = balanceOf(to) + amount;
++  }
++
++  /// Crédite `address` de `amount` — utilisé par un bloc `receive`
++  /// ACCEPTÉ (le compte qui réclame un `send`), ou par la transaction
++  /// de mint (genesis), le seul cas où un crédit n'a pas de débit
++  /// correspondant ailleurs dans le ledger.
++  void credit(String address, BigInt amount) {
++    _balances[address] = balanceOf(address) + amount;
++  }
++
++  /// Conservé pour compatibilité : débite `from` et crédite `to` en une
++  /// fois. N'est plus utilisé que pour le cas mint (from = adresse de
++  /// mint, exemptée de débit par construction — voir `debit`).
++  void apply(String from, String to, BigInt amount) {
++    debit(from, amount);
++    credit(to, amount);
+   }
+ 
+   /// Restaure un état de solde déjà calculé (ex: après relecture du
+diff --git a/lib/core/dag/transaction_model.dart b/lib/core/dag/transaction_model.dart
+index 678b35d..c8cbda8 100644
+--- a/lib/core/dag/transaction_model.dart
++++ b/lib/core/dag/transaction_model.dart
+@@ -1,7 +1,31 @@
+ import 'dart:convert';
+ import 'package:crypto/crypto.dart' as crypto;
+ 
+-/// Une transaction du DAG.
++/// `send` : débite immédiatement le compte émetteur. Ne crédite PERSONNE
++/// directement — les fonds restent "en attente" jusqu'à ce que le
++/// destinataire les réclame explicitement avec un bloc `receive` (voir
++/// plus bas). C'est le modèle "block-lattice" de Nano : chaque compte a
++/// sa propre chaîne, et personne d'autre que son propriétaire ne peut
++/// jamais y ajouter un bloc.
++///
++/// `receive` : signé par le DESTINATAIRE, référence explicitement le
++/// `send` qu'il réclame (`linkedSendId`). C'est ce bloc, et lui seul, qui
++/// crédite le compte. Un `send` ne peut être réclamé qu'une fois.
++///
++/// Pourquoi ce modèle : dans l'ancienne version (crédit immédiat au
++/// moment de l'acceptation du `send`), valider une dépense d'Alice
++/// dépendait potentiellement de l'ordre dans lequel un nœud avait déjà
++/// vu les crédits ENTRANTS d'Alice provenant d'AUTRES comptes — ordre
++/// qui pouvait différer d'un pair à l'autre selon ce qu'ils avaient déjà
++/// synchronisé. Avec send/receive, valider un `send` d'Alice ne dépend
++/// QUE de la propre chaîne d'Alice (son solde tel qu'ELLE l'a construit,
++/// bloc après bloc, dans SON nonce à elle) — jamais de l'historique d'un
++/// autre compte. L'ambiguïté d'ordre inter-comptes disparaît par
++/// construction, sans avoir besoin d'un consensus global pour la
++/// trancher.
++enum TxType { send, receive }
++
++/// Une transaction du DAG — un bloc de la chaîne du compte `from`.
+ ///
+ /// `parents` = hashes des transactions "de pointe" (tips) que celle-ci
+ /// approuve en les référençant — c'est ce qui construit la chaîne : chaque
+@@ -10,14 +34,15 @@ import 'package:crypto/crypto.dart' as crypto;
+ /// et non une liste linéaire.
+ ///
+ /// `hash` est calculé à partir de TOUT le contenu de la tx (y compris ses
+-/// parents). Conséquence directe : modifier ne serait-ce qu'un seul champ
+-/// d'une transaction passée change son hash, ce qui invalide instantanément
+-/// toutes les transactions qui la référençaient comme parent (leur propre
+-/// hash ne "collerait" plus à la chaîne). Falsifier l'historique demanderait
+-/// de re-signer et re-diffuser toute la branche modifiée — irréalisable une
++/// parents, son type et son éventuel `linkedSendId`). Conséquence directe :
++/// modifier ne serait-ce qu'un seul champ d'une transaction passée change
++/// son hash, ce qui invalide instantanément toutes les transactions qui la
++/// référençaient comme parent. Falsifier l'historique demanderait de
++/// re-signer et re-diffuser toute la branche modifiée — irréalisable une
+ /// fois que d'autres pairs l'ont déjà répliquée et confirmée.
+ class Transaction {
+   final String id;
++  final TxType type;
+   final String from;
+   final String to;
+   final BigInt amount;
+@@ -26,18 +51,25 @@ class Transaction {
+   final List<String> parents;
+   final int timestamp;
+ 
+-  /// Numéro de séquence de l'émetteur (`from`), strictement croissant.
+-  /// Empêche le rejeu d'une transaction déjà signée (protection anti
+-  /// double-dépense classique, façon nonce Ethereum).
++  /// Numéro de séquence dans la chaîne DU COMPTE `from`, strictement
++  /// croissant, qu'il s'agisse d'un `send` ou d'un `receive` — les deux
++  /// partagent la même séquence, exactement comme les blocs successifs
++  /// de la chaîne d'un compte Nano. Empêche le rejeu d'un bloc déjà signé.
+   final int nonce;
+ 
+-  /// Clé publique Ed25519 (hex) de l'émetteur, incluse pour que n'importe
++  /// Clé publique Ed25519 (hex) de `from`, incluse pour que n'importe
+   /// quel pair puisse vérifier la signature sans échange préalable.
+   final String senderPublicKey;
+ 
+   /// Signature Ed25519 (hex) de `hash` par la clé privée de `from`.
+   final String signature;
+ 
++  /// UNIQUEMENT pour `type == receive` : id du bloc `send` réclamé par ce
++  /// bloc. `null`/vide pour un `send`. Un même `send` ne peut être
++  /// référencé que par UN SEUL `receive` dans tout le réseau (appliqué
++  /// par DagEngine).
++  final String? linkedSendId;
++
+   Transaction({
+     required this.id,
+     required this.from,
+@@ -48,14 +80,21 @@ class Transaction {
+     required this.nonce,
+     required this.senderPublicKey,
+     required this.signature,
++    this.type = TxType.send,
++    this.linkedSendId,
+   });
+ 
+   /// Empreinte de contenu : sha256 de tous les champs sauf la signature
+   /// elle-même (on signe le hash, on ne peut pas l'inclure dedans).
++  /// `type` et `linkedSendId` sont inclus : sans ça, un attaquant pourrait
++  /// prendre un bloc valide et le rejouer sous un autre type, ou changer
++  /// quel `send` un `receive` prétend réclamer, sans invalider la
++  /// signature.
+   String get hash {
+     final sortedParents = [...parents]..sort();
+     final raw = [
+       id,
++      type.name,
+       from,
+       to,
+       amount.toString(),
+@@ -63,12 +102,14 @@ class Transaction {
+       timestamp.toString(),
+       nonce.toString(),
+       senderPublicKey,
++      linkedSendId ?? '',
+     ].join('|');
+     return crypto.sha256.convert(utf8.encode(raw)).toString();
+   }
+ 
+   Map<String, dynamic> toJson() => {
+         "id": id,
++        "type": type.name,
+         "from": from,
+         "to": to,
+         "amount": amount.toString(),
+@@ -77,10 +118,12 @@ class Transaction {
+         "nonce": nonce,
+         "senderPublicKey": senderPublicKey,
+         "signature": signature,
++        "linkedSendId": linkedSendId,
+       };
+ 
+   factory Transaction.fromJson(Map<String, dynamic> json) => Transaction(
+         id: json["id"] as String,
++        type: (json["type"] as String?) == "receive" ? TxType.receive : TxType.send,
+         from: json["from"] as String,
+         to: json["to"] as String,
+         amount: BigInt.parse(json["amount"] as String),
+@@ -89,5 +132,6 @@ class Transaction {
+         nonce: json["nonce"] as int? ?? 0,
+         senderPublicKey: json["senderPublicKey"] as String? ?? "",
+         signature: json["signature"] as String? ?? "",
++        linkedSendId: json["linkedSendId"] as String?,
+       );
+-}
+\ No newline at end of file
++}
+diff --git a/lib/core/dag/tx_validator.dart b/lib/core/dag/tx_validator.dart
+index 2601899..4bc7304 100644
+--- a/lib/core/dag/tx_validator.dart
++++ b/lib/core/dag/tx_validator.dart
+@@ -16,20 +16,29 @@ class TxValidator {
+     // fondatrice. On saute le check from == senderPublicKey car le from
+     // est l'adresse de mint (pas dérivable d'une clé).
+     if (Genesis.isMintAddress(tx.from)) {
+-      return tx.amount == Genesis.maxSupply &&
++      return tx.type == TxType.send &&
++          tx.amount == Genesis.maxSupply &&
+           tx.to == Genesis.genesisAddress &&
+           tx.nonce == 0;
+     }
+ 
+     if (tx.from.isEmpty) return false;
+-    if (tx.from == tx.to) return false;
+     if (tx.nonce < 0) return false;
+ 
+     // L'adresse déclarée doit être dérivable de la clé publique fournie —
+     // sinon n'importe qui pourrait prétendre envoyer depuis l'adresse d'un
+-    // autre sans en détenir la clé privée.
++    // autre sans en détenir la clé privée. S'applique aux deux types :
++    // un `receive` est un bloc de la chaîne du DESTINATAIRE, signé par lui.
+     if (AddressGenerator.generate(tx.senderPublicKey) != tx.from) return false;
+ 
++    if (tx.type == TxType.send) {
++      // Un send ne peut pas se payer soi-même.
++      if (tx.from == tx.to) return false;
++    } else {
++      // Un receive doit référencer explicitement le send qu'il réclame.
++      if (tx.linkedSendId == null || tx.linkedSendId!.isEmpty) return false;
++    }
++
+     return true;
+   }
+ }
+\ No newline at end of file
+diff --git a/lib/core/kernels/market/market_kernel.dart b/lib/core/kernels/market/market_kernel.dart
+index 37e6909..9e8deb0 100644
+--- a/lib/core/kernels/market/market_kernel.dart
++++ b/lib/core/kernels/market/market_kernel.dart
+@@ -3,6 +3,8 @@ import 'dart:async';
+ import 'dart:convert';
+ import 'package:cryptography/cryptography.dart';
+ import '../../crypto/signature.dart';
++import '../../dag/dag_engine.dart';
++import '../../dag/transaction_model.dart';
+ import '../../market/order_model.dart';
+ import '../../market/trade_model.dart';
+ import '../../p2p/webrtc_engine.dart';
+@@ -18,6 +20,13 @@ class MarketKernel {
+   final WebRTCNetworkEngine p2p;
+   final OrderRepository orderRepo;
+   final TradeRepository tradeRepo;
++
++  /// Nécessaire pour vérifier qu'un `trade_accept` correspond à un VRAI
++  /// paiement DORO déjà finalisé — sans ça, n'importe quel pair pouvait
++  /// prétendre avoir payé (txId inventé) et se faire créditer un ordre
++  /// "filled" sans jamais avoir transféré le moindre token.
++  final DagEngine dag;
++
+   final CryptoService _crypto = CryptoService();
+ 
+   final Set<String> _seenOrders = {};
+@@ -29,7 +38,13 @@ class MarketKernel {
+   final _tradeUpdates = StreamController<void>.broadcast();
+   Stream<void> get tradeUpdates => _tradeUpdates.stream;
+ 
+-  MarketKernel({required this.identity, required this.p2p, required this.orderRepo, required this.tradeRepo}) {
++  MarketKernel({
++    required this.identity,
++    required this.p2p,
++    required this.orderRepo,
++    required this.tradeRepo,
++    required this.dag,
++  }) {
+     p2p.messages.listen((msg) {
+       final data = msg.data;
+       if (data is! Map<String, dynamic>) return;
+@@ -159,30 +174,110 @@ class MarketKernel {
+ 
+   /// À appeler UNIQUEMENT après un vrai transfert DORO on-chain déjà
+   /// effectué (voir MarketProvider.confirmSale) — txId en est la preuve.
+-  void acceptTrade(Trade trade, String txId) {
++  /// Le message envoyé est signé : le récepteur vérifie cette signature
++  /// ET que `txId` correspond réellement à un paiement finalisé sur le
++  /// DAG avant d'accepter la confirmation (voir `_handleTradeEvent`).
++  Future<void> acceptTrade(Trade trade, String txId) async {
+     final confirmed = trade.copyWith(status: TradeStatus.confirmed, txId: txId);
+     tradeRepo.save(confirmed);
+     orderRepo.markFilled(trade.orderId);
+     final counterpart = confirmed.sellerId == identity.nodeId ? confirmed.buyerId : confirmed.sellerId;
+-    p2p.sendToPeer(counterpart, {"type": "trade_accept", ...confirmed.toJson()});
++    final payload = await _signedTradeEvent("trade_accept", confirmed);
++    p2p.sendToPeer(counterpart, payload);
+     _tradeUpdates.add(null);
+     _orderBookChanges.add(null);
+   }
+ 
+-  void rejectTrade(Trade trade) {
++  Future<void> rejectTrade(Trade trade) async {
+     final rejected = trade.copyWith(status: TradeStatus.rejected);
+     tradeRepo.save(rejected);
+     final counterpart = rejected.sellerId == identity.nodeId ? rejected.buyerId : rejected.sellerId;
+-    p2p.sendToPeer(counterpart, {"type": "trade_reject", ...rejected.toJson()});
++    final payload = await _signedTradeEvent("trade_reject", rejected);
++    p2p.sendToPeer(counterpart, payload);
+     _tradeUpdates.add(null);
+   }
+ 
+-  void _handleTradeEvent(Map<String, dynamic> data) {
++  Future<Map<String, dynamic>> _signedTradeEvent(String type, Trade trade) async {
++    final message = "${trade.id}:${trade.status.name}:${trade.txId ?? ''}";
++    final sig = await _crypto.sign(utf8.encode(message), keyPair: identity.keyPair);
++    return {
++      "type": type,
++      ...trade.toJson(),
++      "signerPublicKey": identity.publicKeyHex,
++      "signature": _bytesToHex(sig.bytes),
++    };
++  }
++
++  Future<void> _handleTradeEvent(Map<String, dynamic> data) async {
++    late final Trade trade;
+     try {
+-      tradeRepo.save(Trade.fromJson(data));
+-      _tradeUpdates.add(null);
+-      _orderBookChanges.add(null);
+-    } catch (_) {}
++      trade = Trade.fromJson(data);
++    } catch (_) {
++      return;
++    }
++
++    final signerPublicKey = data["signerPublicKey"] as String?;
++    final signature = data["signature"] as String?;
++    if (signerPublicKey == null || signature == null) {
++      Logger.warn("Événement de trade ${trade.id} rejeté : non signé");
++      return;
++    }
++
++    // Le signataire doit être L'AUTRE partie du trade — pas moi-même,
++    // pas un tiers qui n'a rien à voir avec cette négociation.
++    final signerAddress = AddressGenerator.generate(signerPublicKey);
++    final expectedCounterpart =
++        trade.sellerId == identity.nodeId ? trade.buyerId : trade.sellerId;
++    if (signerAddress != expectedCounterpart) {
++      Logger.warn("Événement de trade ${trade.id} rejeté : signataire ($signerAddress) "
++          "n'est pas la contrepartie attendue ($expectedCounterpart)");
++      return;
++    }
++
++    final message = "${trade.id}:${trade.status.name}:${trade.txId ?? ''}";
++    if (!await _verify(message, signerPublicKey, signature)) {
++      Logger.warn("Événement de trade ${trade.id} rejeté : signature invalide");
++      return;
++    }
++
++    // Preuve de paiement on-chain OBLIGATOIRE avant d'accepter une
++    // confirmation — sans ce contrôle, n'importe qui pouvait envoyer un
++    // txId inventé et se faire créditer un ordre "filled" sans avoir
++    // jamais transféré le moindre DORO.
++    if (trade.status == TradeStatus.confirmed) {
++      final txId = trade.txId;
++      if (txId == null || !_paymentProven(trade, txId)) {
++        Logger.warn("Trade ${trade.id} rejeté : txId '$txId' ne prouve pas le paiement on-chain");
++        return;
++      }
++    }
++
++    // Pas besoin de déduplication ici : `tradeRepo.save()` fait un upsert
++    // par `tradeId`, donc recevoir deux fois le même événement (déjà
++    // vérifié ci-dessus) est inoffensif — la seconde écriture donne le
++    // même état final.
++    tradeRepo.save(trade);
++    _tradeUpdates.add(null);
++    _orderBookChanges.add(null);
++  }
++
++  /// Vérifie que `txId` référence une transaction RÉELLEMENT acceptée
++  /// dans MON PROPRE DAG (donc déjà passée par la validation complète —
++  /// structure, signature, solde, nonce — de `DagEngine.addValidated`),
++  /// correctement dirigée (du vendeur vers l'acheteur) et d'un montant
++  /// suffisant. On n'exige pas ici la finalité multi-pairs complète : sur
++  /// un petit réseau (juste vendeur + acheteur), le nombre de confirmeurs
++  /// distincts nécessaire par défaut (2) ne serait jamais atteignable et
++  /// bloquerait indéfiniment des trades pourtant légitimes. La présence
++  /// dans le ledger local suffit déjà à exclure un txId inventé.
++  bool _paymentProven(Trade trade, String txId) {
++    final tx = dag.ledger[txId];
++    if (tx == null) return false;
++    if (tx.type != TxType.send) return false;
++    if (tx.from != trade.sellerId) return false;
++    if (tx.to != trade.buyerId) return false;
++    if (tx.amount < trade.amount) return false;
++    return true;
+   }
+ 
+   Future<bool> _verify(String message, String publicKeyHex, String signatureHex) async {
+diff --git a/lib/core/kernels/wallet/wallet_kernel.dart b/lib/core/kernels/wallet/wallet_kernel.dart
+index 7029f30..c221d9e 100644
+--- a/lib/core/kernels/wallet/wallet_kernel.dart
++++ b/lib/core/kernels/wallet/wallet_kernel.dart
+@@ -8,6 +8,8 @@ import '../../dag/transaction_model.dart';
+ import '../../consensus/consensus_engine.dart';
+ import '../../wallet/wallet_core.dart';
+ import '../../storage/repositories/tx_repository.dart';
++import '../../storage/secure/keypair_store.dart';
++import '../../utils/id_generator.dart';
+ import '../../utils/node_identity.dart';
+ import '../../p2p/webrtc_engine.dart';
+ import '../../utils/logger.dart';
+@@ -65,6 +67,22 @@ class WalletKernel {
+ 
+     dag.onCommit = (tx) {
+       notifyChange();
++      // Un `send` qui m'est destiné (compte que je possède localement) :
++      // je réclame automatiquement les fonds avec un `receive` — sans ça,
++      // l'utilisateur devrait manuellement "accepter" chaque paiement
++      // reçu, alors que l'ancien modèle créditait déjà tout seul.
++      if (tx.type == TxType.send && wallet.get(tx.to) != null && !dag.isSendClaimed(tx.id)) {
++        _autoClaim(tx);
++      }
++    };
++
++    // Un `receive` qui attendait son `send` (arrivé en retard, ex: via
++    // un chemin de gossip plus long) vient d'être accepté — personne
++    // d'autre ne le persisterait/rediffuserait, `_handleIncomingTx` a
++    // déjà rendu la main depuis longtemps quand ça arrive.
++    dag.onPendingReceiveResolved = (tx) {
++      p2p.broadcast({"type": "tx", ...tx.toJson()});
++      txRepo.save(tx);
+     };
+   }
+ 
+@@ -95,6 +113,63 @@ class WalletKernel {
+     }
+   }
+ 
++  /// Construit, signe et diffuse le `receive` qui réclame `sendTx` — ce
++  /// bloc appartient à la chaîne du DESTINATAIRE (`sendTx.to`), c'est
++  /// donc SA clé privée (pas la mienne au sens `identity`) qu'il faut
++  /// utiliser pour signer, chargée via `KeypairStore`.
++  Future<void> _autoClaim(Transaction sendTx) async {
++    final recipient = sendTx.to;
++    final recipientWallet = wallet.get(recipient);
++    if (recipientWallet == null) return;
++
++    final keyPair = await KeypairStore.load(recipient);
++    if (keyPair == null) {
++      Logger.warn("Pas de clé privée locale pour $recipient — impossible de réclamer ${sendTx.id}");
++      return;
++    }
++
++    final lastKnown = dag.lastNonceOf(recipient);
++    final nonce = (lastKnown > recipientWallet.nonce ? lastKnown : recipientWallet.nonce) + 1;
++
++    final unsigned = Transaction(
++      id: IdGenerator.generateId("receive"),
++      type: TxType.receive,
++      from: recipient,
++      to: recipient,
++      amount: sendTx.amount,
++      parents: dag.tips().take(2).toList(),
++      timestamp: DateTime.now().millisecondsSinceEpoch,
++      nonce: nonce,
++      senderPublicKey: recipientWallet.publicKey,
++      signature: "",
++      linkedSendId: sendTx.id,
++    );
++
++    final sig = await crypto.sign(utf8.encode(unsigned.hash), keyPair: keyPair);
++    final receiveTx = Transaction(
++      id: unsigned.id,
++      type: TxType.receive,
++      from: unsigned.from,
++      to: unsigned.to,
++      amount: unsigned.amount,
++      parents: unsigned.parents,
++      timestamp: unsigned.timestamp,
++      nonce: unsigned.nonce,
++      senderPublicKey: unsigned.senderPublicKey,
++      signature: _bytesToHex(sig.bytes),
++      linkedSendId: unsigned.linkedSendId,
++    );
++
++    final result = dag.addValidated(receiveTx);
++    if (result == DagAcceptResult.accepted) {
++      recipientWallet.nonce = nonce;
++      p2p.broadcast({"type": "tx", ...receiveTx.toJson()});
++      await txRepo.save(receiveTx);
++    } else {
++      Logger.warn("Auto-claim de ${sendTx.id} rejeté localement : $result");
++    }
++  }
++
+   Future<void> _handleIncomingApprove(Map<String, dynamic> data) async {
+     final txId = data["txId"] as String?;
+     final approver = data["approver"] as String?;
+@@ -199,6 +274,16 @@ class WalletKernel {
+     });
+   }
+ 
++  /// Demande à `peerId` de nous envoyer tout son historique de
++  /// transactions connu. À appeler dès qu'une connexion s'établit avec
++  /// un pair — sans ça, un nœud qui vient de rejoindre le réseau ne
++  /// connaît QUE les transactions diffusées après sa connexion, et peut
++  /// à tort rejeter un paiement légitime d'un pair dont il n'a pas encore
++  /// vu l'historique (solde local incomplet).
++  void requestSync(String peerId) {
++    p2p.sendToPeer(peerId, {"type": "sync_request", "from": identity.nodeId});
++  }
++
+   Future<void> _handleSyncResponse(Map<String, dynamic> data) async {
+     final txs = data["txs"] as List?;
+     if (txs == null) return;
+@@ -224,7 +309,11 @@ class WalletKernel {
+   }
+ 
+   void _creditIfFinalizedHere(Transaction tx) {
+-    final credited = wallet.creditIfLocal(tx.to, tx.amount);
++    // Avec le modèle send/receive, un `send` ne crédite plus personne
++    // directement — seul un `receive` (bloc de la chaîne du compte qui
++    // reçoit, donc `tx.from` ici) crédite réellement un solde.
++    if (tx.type != TxType.receive) return;
++    final credited = wallet.creditIfLocal(tx.from, tx.amount);
+     if (credited) {
+       notifyChange();
+     }
+@@ -239,11 +328,27 @@ class WalletKernel {
+     return result;
+   }
+ 
++  /// Recharge l'historique persisté localement. Les transactions
++  /// enregistrées AVANT l'introduction du modèle send/receive sont
++  /// relues comme de simples `send` (voir TxRepository, pas de marqueur
++  /// de type) — sous l'ancien modèle, elles créditaient directement leur
++  /// destinataire. Pour ne pas perdre ces fonds déjà reçus, on synthétise
++  /// automatiquement le `receive` manquant pour toute adresse que CET
++  /// appareil possède localement (migration one-shot, silencieuse).
+   Future<void> loadPersistedLedger() async {
+     await txRepo.load();
++    final toMigrate = <Transaction>[];
+     for (final tx in txRepo.all()) {
+-      dag.addValidated(tx);
+-      dag.finality.markFinalized(tx.id);
++      final result = dag.addValidated(tx);
++      if (result == DagAcceptResult.accepted) {
++        dag.finality.markFinalized(tx.id);
++      }
++      if (tx.type == TxType.send && wallet.get(tx.to) != null && !dag.isSendClaimed(tx.id)) {
++        toMigrate.add(tx);
++      }
++    }
++    for (final sendTx in toMigrate) {
++      await _autoClaim(sendTx);
+     }
+   }
+ 
+diff --git a/lib/core/p2p/p2p_node.dart b/lib/core/p2p/p2p_node.dart
+index 5746b3c..517823b 100644
+--- a/lib/core/p2p/p2p_node.dart
++++ b/lib/core/p2p/p2p_node.dart
+@@ -53,6 +53,10 @@ class P2PNode {
+       // attendait ce pair précisément peut maintenant partir pour de
+       // vrai (voir MessengerKernel._outbox).
+       messengerKernel.onPeerChannelOpen(peerId);
++      // Récupère l'historique de transactions de ce pair — sans ça, mon
++      // solde local le concernant reste incomplet (voir WalletKernel.
++      // requestSync) et je peux rejeter à tort un paiement légitime.
++      walletKernel.requestSync(peerId);
+       _channelReadyController.add(peerId);
+       _networkChangeController.add(null);
+     };
+@@ -78,7 +82,7 @@ class P2PNode {
+     );
+     orderRepo = OrderRepository(db);
+     tradeRepo = TradeRepository(db);
+-    marketKernel = MarketKernel(identity: identity, p2p: p2p, orderRepo: orderRepo, tradeRepo: tradeRepo);
++    marketKernel = MarketKernel(identity: identity, p2p: p2p, orderRepo: orderRepo, tradeRepo: tradeRepo, dag: dag);
+   }
+ 
+   Stream<Map<String, dynamic>> get messages => messengerKernel.messages;
+diff --git a/lib/core/storage/repositories/tx_repository.dart b/lib/core/storage/repositories/tx_repository.dart
+index 4f73856..82b781e 100644
+--- a/lib/core/storage/repositories/tx_repository.dart
++++ b/lib/core/storage/repositories/tx_repository.dart
+@@ -3,30 +3,72 @@ import '../../dag/transaction_model.dart';
+ import '../entities/tx_entity.dart';
+ import '../objectbox/store.dart';
+ 
++/// ⚠️ Limite technique connue : `TxEntity` (schéma ObjectBox) n'a pas de
++/// colonne pour `type` (send/receive) ni `linkedSendId` — les ajouter
++/// proprement demande de régénérer `objectbox.g.dart` via `build_runner`,
++/// impossible à faire depuis cet environnement (pas d'accès à `dart`/
++/// `flutter pub`). En attendant, on encode ces deux infos DANS la colonne
++/// `parents` existante, derrière un séparateur `;` qu'un id de parent
++/// (toujours un hash sha256 hexadécimal à 64 caractères, jamais de `;`)
++/// ne peut pas produire — donc aucune ambiguïté de parsing possible.
++///
++/// À FAIRE dès que possible sur ta machine : lance
++/// `flutter pub run build_runner build` après avoir ajouté `type` (String)
++/// et `linkedSendId` (String?) à `TxEntity`, puis remplace ce hack par de
++/// vraies colonnes. Le format ci-dessous restera lisible pour écrire un
++/// script de migration one-shot si besoin.
+ class TxRepository {
+   final ObjectBoxStore _db;
+   late final Box<TxEntity> _box;
+ 
++  static const _marker = ';;DORO_TX_META;;';
++
+   TxRepository(this._db) {
+     _box = _db.getBox<TxEntity>();
+   }
+ 
++  String _encodeParents(Transaction tx) {
++    final base = tx.parents.join(',');
++    if (tx.type == TxType.send) return base;
++    return '$base$_marker${tx.type.name}:${tx.linkedSendId ?? ''}';
++  }
++
++  ({List<String> parents, TxType type, String? linkedSendId}) _decodeParents(String raw) {
++    final markerIndex = raw.indexOf(_marker);
++    if (markerIndex == -1) {
++      final parents = raw.isEmpty ? const <String>[] : raw.split(',');
++      return (parents: parents, type: TxType.send, linkedSendId: null);
++    }
++    final parentsPart = raw.substring(0, markerIndex);
++    final metaPart = raw.substring(markerIndex + _marker.length);
++    final sep = metaPart.indexOf(':');
++    final typeName = sep == -1 ? metaPart : metaPart.substring(0, sep);
++    final linkedSendId = sep == -1 ? null : metaPart.substring(sep + 1);
++    final parents = parentsPart.isEmpty ? const <String>[] : parentsPart.split(',');
++    return (
++      parents: parents,
++      type: typeName == 'receive' ? TxType.receive : TxType.send,
++      linkedSendId: (linkedSendId == null || linkedSendId.isEmpty) ? null : linkedSendId,
++    );
++  }
++
+   List<Transaction> all() {
+-    return _box.getAll().map((e) => Transaction(
+-      id: e.txId,
+-      from: e.from,
+-      to: e.to,
+-      amount: BigInt.parse(e.amount),
+-      timestamp: e.timestamp,
+-      signature: e.signature,
+-      nonce: e.nonce,
+-      senderPublicKey: e.senderPublicKey,
+-      // "".split(',') retourne [''] et non [] — sans ce garde-fou, toute
+-      // transaction sans parents (ex: la genesis) est rechargée avec un
+-      // faux parent "" et se fait rejeter comme "parents inconnus" par
+-      // DagEngine au redémarrage de l'app, la faisant disparaître du DAG.
+-      parents: e.parents.isEmpty ? const <String>[] : e.parents.split(','),
+-    )).toList();
++    return _box.getAll().map((e) {
++      final decoded = _decodeParents(e.parents);
++      return Transaction(
++        id: e.txId,
++        type: decoded.type,
++        from: e.from,
++        to: e.to,
++        amount: BigInt.parse(e.amount),
++        timestamp: e.timestamp,
++        signature: e.signature,
++        nonce: e.nonce,
++        senderPublicKey: e.senderPublicKey,
++        parents: decoded.parents,
++        linkedSendId: decoded.linkedSendId,
++      );
++    }).toList();
+   }
+ 
+   Future<void> save(Transaction tx) async {
+@@ -42,7 +84,7 @@ class TxRepository {
+       signature: tx.signature,
+       nonce: tx.nonce,
+       senderPublicKey: tx.senderPublicKey,
+-      parents: tx.parents.join(','),
++      parents: _encodeParents(tx),
+     ));
+   }
+ 
+diff --git a/lib/features/chat/chat_provider.dart b/lib/features/chat/chat_provider.dart
+index 7c4e0b3..1af5f3b 100644
+--- a/lib/features/chat/chat_provider.dart
++++ b/lib/features/chat/chat_provider.dart
+@@ -98,12 +98,12 @@ class ChatProvider extends ChangeNotifier {
+ 
+   Future<bool> sendCrypto(String toAddress, BigInt amount) async {
+     if (walletProvider == null || walletProvider!.wallets.isEmpty) return false;
+-    final ok = await walletProvider!.send(
++    final txId = await walletProvider!.send(
+       from: walletProvider!.wallets.first.address,
+       to: toAddress,
+       amount: amount,
+     );
+-    if (ok) {
++    if (txId != null) {
+       messagesWith(toAddress).add({
+         "type": "tx_info",
+         "from": node.nodeId,
+@@ -112,7 +112,7 @@ class ChatProvider extends ChangeNotifier {
+       });
+       notifyListeners();
+     }
+-    return ok;
++    return txId != null;
+   }
+ 
+   void clearHistory(String peerId) {
+diff --git a/lib/features/chat/chat_screen.dart b/lib/features/chat/chat_screen.dart
+index 37732fc..6e158a3 100644
+--- a/lib/features/chat/chat_screen.dart
++++ b/lib/features/chat/chat_screen.dart
+@@ -1,6 +1,7 @@
+ // lib/features/chat/chat_screen.dart
+ import 'package:flutter/material.dart';
+ import 'package:provider/provider.dart';
++import '../../shared/extensions/string_ext.dart';
+ import 'chat_provider.dart';
+ 
+ class ChatScreen extends StatefulWidget {
+@@ -57,9 +58,16 @@ class _ChatScreenState extends State<ChatScreen> {
+             onPressed: () async {
+               final amountStr = amountController.text.trim();
+               if (amountStr.isEmpty) return;
+-              final amount = BigInt.from(double.parse(amountStr) * 1e18);
+               final navigator = Navigator.of(ctx);
+               final scaffoldMessenger = ScaffoldMessenger.of(context);
++              final parsed = amountStr.toLocaleDouble();
++              if (parsed == null || parsed <= 0) {
++                scaffoldMessenger.showSnackBar(
++                  const SnackBar(content: Text("Montant invalide")),
++                );
++                return;
++              }
++              final amount = BigInt.from(parsed * 1e18);
+               final ok = await context.read<ChatProvider>().sendCrypto(widget.peerId, amount);
+               navigator.pop();
+               scaffoldMessenger.showSnackBar(SnackBar(content: Text(ok ? "Transfert réussi" : "Échec du transfert")));
+diff --git a/lib/features/home/home_screen.dart b/lib/features/home/home_screen.dart
+index 91f0d8c..4b5d614 100644
+--- a/lib/features/home/home_screen.dart
++++ b/lib/features/home/home_screen.dart
+@@ -6,6 +6,7 @@ import '../../core/market/trade_model.dart';
+ import '../market/market_provider.dart';
+ import '../wallet/wallet_provider.dart';
+ import '../wallet/wallet_screen.dart' show formatDoro;
++import '../../shared/extensions/string_ext.dart';
+ 
+ String _fmtPrice(BigInt cents) => "\$${(cents.toDouble() / 100).toStringAsFixed(2)}";
+ String _shortId(String id) => id.length > 14 ? "${id.substring(0, 8)}…${id.substring(id.length - 4)}" : id;
+@@ -48,11 +49,19 @@ class HomeScreen extends StatelessWidget {
+                 final amountStr = amountCtrl.text.trim();
+                 final priceStr = priceCtrl.text.trim();
+                 if (amountStr.isEmpty || priceStr.isEmpty) return;
+-                final amount = BigInt.from(double.parse(amountStr) * 1e18);
+-                final price = BigInt.from((double.parse(priceStr) * 100).round());
+-                final market = context.read<MarketProvider>();
+                 final navigator = Navigator.of(ctx);
+                 final scaffoldMessenger = ScaffoldMessenger.of(context);
++                final parsedAmount = amountStr.toLocaleDouble();
++                final parsedPrice = priceStr.toLocaleDouble();
++                if (parsedAmount == null || parsedAmount <= 0 || parsedPrice == null || parsedPrice <= 0) {
++                  scaffoldMessenger.showSnackBar(
++                    const SnackBar(content: Text("Quantité ou prix invalide")),
++                  );
++                  return;
++                }
++                final amount = BigInt.from(parsedAmount * 1e18);
++                final price = BigInt.from((parsedPrice * 100).round());
++                final market = context.read<MarketProvider>();
+                 final order = await market.publishOrder(side: side, amount: amount, pricePerUnit: price);
+                 navigator.pop();
+                 scaffoldMessenger.showSnackBar(SnackBar(
+diff --git a/lib/features/ledger/ledger_screen.dart b/lib/features/ledger/ledger_screen.dart
+index c8bdf23..9b246a6 100644
+--- a/lib/features/ledger/ledger_screen.dart
++++ b/lib/features/ledger/ledger_screen.dart
+@@ -1,5 +1,6 @@
+ import 'package:flutter/material.dart';
+ import 'package:provider/provider.dart';
++import '../../core/dag/transaction_model.dart';
+ import '../../shared/widgets/tx_tile.dart';
+ import 'ledger_provider.dart';
+ 
+@@ -18,8 +19,17 @@ class LedgerScreen extends StatelessWidget {
+               itemCount: provider.transactions.length,
+               itemBuilder: (context, index) {
+                 final tx = provider.transactions[index];
++                // Un `receive` a `from == to` par convention (bloc de la
++                // chaîne du destinataire) — pour l'affichage, on retrouve
++                // le VRAI expéditeur d'origine via le `send` référencé,
++                // sinon "0xABC… → 0xABC…" serait juste déroutant.
++                String displayFrom = tx.from;
++                if (tx.type == TxType.receive && tx.linkedSendId != null) {
++                  final linkedSend = provider.dag.ledger[tx.linkedSendId];
++                  if (linkedSend != null) displayFrom = linkedSend.from;
++                }
+                 return TxTile(
+-                  from: tx.from,
++                  from: displayFrom,
+                   to: tx.to,
+                   amount: tx.amount.toString(),
+                   isFinal: provider.isFinal(tx.id),
+diff --git a/lib/features/market/market_provider.dart b/lib/features/market/market_provider.dart
+index 2bf2485..29f3014 100644
+--- a/lib/features/market/market_provider.dart
++++ b/lib/features/market/market_provider.dart
+@@ -90,19 +90,19 @@ class MarketProvider extends ChangeNotifier {
+       notifyListeners();
+       return false;
+     }
+-    final ok = await walletProvider!.send(from: trade.sellerId, to: trade.buyerId, amount: trade.amount);
+-    if (!ok) {
++    final txId = await walletProvider!.send(from: trade.sellerId, to: trade.buyerId, amount: trade.amount);
++    if (txId == null) {
+       lastError = "Le transfert DORO a échoué (solde ou clé locale manquante).";
+       notifyListeners();
+       return false;
+     }
+-    node.marketKernel.acceptTrade(trade, "tx-${DateTime.now().millisecondsSinceEpoch}");
++    await node.marketKernel.acceptTrade(trade, txId);
+     notifyListeners();
+     return true;
+   }
+ 
+-  void rejectTrade(Trade trade) {
+-    node.marketKernel.rejectTrade(trade);
++  Future<void> rejectTrade(Trade trade) async {
++    await node.marketKernel.rejectTrade(trade);
+     notifyListeners();
+   }
+ }
+\ No newline at end of file
+diff --git a/lib/features/wallet/send_screen.dart b/lib/features/wallet/send_screen.dart
+index 9a97450..cc0f8ad 100644
+--- a/lib/features/wallet/send_screen.dart
++++ b/lib/features/wallet/send_screen.dart
+@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
+ import 'package:provider/provider.dart';
+ import 'wallet_provider.dart';
+ import '../../core/wallet/token_config.dart';
++import '../../shared/extensions/string_ext.dart';
+ 
+ class SendScreen extends StatefulWidget {
+   const SendScreen({super.key});
+@@ -27,7 +28,7 @@ class _SendScreenState extends State<SendScreen> {
+     final amountStr = amountCtrl.text.trim();
+     if (to.isEmpty || amountStr.isEmpty) return;
+ 
+-    final humanAmount = double.tryParse(amountStr);
++    final humanAmount = amountStr.toLocaleDouble();
+     if (humanAmount == null || humanAmount <= 0) {
+       ScaffoldMessenger.of(context).showSnackBar(
+         const SnackBar(content: Text("Montant invalide")),
+@@ -42,13 +43,13 @@ class _SendScreenState extends State<SendScreen> {
+ 
+     setState(() => _sending = true);
+     try {
+-      final ok = await provider.send(
++      final txId = await provider.send(
+         from: wallets.first.address,
+         to: to,
+         amount: amount,
+       );
+       if (!mounted) return;
+-      if (ok) {
++      if (txId != null) {
+         toCtrl.clear();
+         amountCtrl.clear();
+         ScaffoldMessenger.of(context).showSnackBar(
+diff --git a/lib/features/wallet/wallet_provider.dart b/lib/features/wallet/wallet_provider.dart
+index 8446bd8..d051133 100644
+--- a/lib/features/wallet/wallet_provider.dart
++++ b/lib/features/wallet/wallet_provider.dart
+@@ -185,22 +185,27 @@ class WalletProvider extends ChangeNotifier {
+     return wallet;
+   }
+ 
+-  Future<bool> send({
++  /// Retourne l'`id` de la transaction réellement diffusée en cas de
++  /// succès, `null` sinon. Le txId réel est nécessaire pour toute preuve
++  /// de paiement on-chain (ex: confirmation de trade OTC) — inventer un
++  /// identifiant à la place (ex: `"tx-" + horodatage`) ne prouve RIEN et
++  /// serait rejeté par la vérification du DAG chez les autres pairs.
++  Future<String?> send({
+     required String from,
+     required String to,
+     required BigInt amount,
+   }) async {
+     final senderWallet = core.get(from);
+-    if (senderWallet == null) return false;
++    if (senderWallet == null) return null;
+ 
+     final keyPair = await KeypairStore.load(from);
+     if (keyPair == null) {
+       Logger.error("Pas de clé privée locale pour $from — envoi impossible");
+-      return false;
++      return null;
+     }
+ 
+     final ok = core.transfer(from, to, amount);
+-    if (!ok) return false;
++    if (!ok) return null;
+ 
+     // Le DAG (persisté via l'historique des tx) fait autorité sur le
+     // dernier nonce réellement utilisé — le compteur local `Wallet.nonce`
+@@ -245,12 +250,21 @@ class WalletProvider extends ChangeNotifier {
+ 
+     final result = node?.broadcastTx(signedTx);
+     if (result != null && result != DagAcceptResult.accepted) {
++      // Le DAG a réellement rejeté la tx (solde insuffisant, rejeu,
++      // etc.) — la faire quand même passer pour un succès aurait laissé
++      // l'appelant (ex: confirmation de trade OTC) croire qu'un paiement
++      // a eu lieu alors qu'il n'a jamais été accepté par le réseau.
+       Logger.error("Ma propre tx ${signedTx.id} n'a pas été acceptée localement : $result");
++      core.creditIfLocal(from, amount); // annule le débit optimiste local
++      senderWallet.nonce -= 1;
++      await repo.syncFromCore(core);
++      notifyListeners();
++      return null;
+     }
+ 
+     await repo.syncFromCore(core); // persiste le nouveau solde ET le nonce
+     notifyListeners();
+-    return true;
++    return signedTx.id;
+   }
+ 
+   void load() {
+diff --git a/lib/features/wallet/wallet_screen.dart b/lib/features/wallet/wallet_screen.dart
+index cdabfce..7cb906b 100644
+--- a/lib/features/wallet/wallet_screen.dart
++++ b/lib/features/wallet/wallet_screen.dart
+@@ -9,6 +9,7 @@ import '../chat/chat_provider.dart';
+ import '../chat/chat_screen.dart';
+ import '../../core/wallet/genesis.dart';
+ import '../../core/wallet/token_config.dart';
++import '../../core/dag/transaction_model.dart';
+ 
+ String formatDoro(BigInt atomicBalance) {
+   const decimals = 18;
+@@ -211,8 +212,21 @@ class _WalletScreenState extends State<WalletScreen> {
+             if (ledger.transactions.isEmpty)
+               const Padding(padding: EdgeInsets.all(16), child: Text("Aucune transaction pour l'instant.")),
+             ...ledger.transactions.map((tx) {
+-              final isSent = tx.from == myAddress;
+-              final counterparty = isSent ? tx.to : tx.from;
++              // Un `receive` a `from == to == moi` par convention (bloc
++              // de MA chaîne qui réclame un paiement) — sans ce cas
++              // particulier, `isSent` valait `true` pour CHAQUE paiement
++              // REÇU (puisque `tx.from == myAddress`), affichant à tort
++              // toute réception comme un envoi vers moi-même.
++              final bool isSent;
++              final String counterparty;
++              if (tx.type == TxType.receive) {
++                isSent = false;
++                final linkedSend = ledger.dag.ledger[tx.linkedSendId];
++                counterparty = linkedSend?.from ?? tx.from;
++              } else {
++                isSent = tx.from == myAddress;
++                counterparty = isSent ? tx.to : tx.from;
++              }
+               return ListTile(
+                 leading: Icon(isSent ? Icons.arrow_upward : Icons.arrow_downward, color: isSent ? Colors.redAccent : Colors.greenAccent),
+                 title: Text(counterparty, style: const TextStyle(fontFamily: 'monospace', fontSize: 12), overflow: TextOverflow.ellipsis),
+diff --git a/lib/shared/extensions/string_ext.dart b/lib/shared/extensions/string_ext.dart
+index 75aae61..53df6cb 100644
+--- a/lib/shared/extensions/string_ext.dart
++++ b/lib/shared/extensions/string_ext.dart
+@@ -4,4 +4,11 @@ extension StringExt on String {
+   String truncate(int len) {
+     return length > len ? "${substring(0, len)}..." : this;
+   }
++
++  /// Parse tolérant : accepte la virgule comme séparateur décimal (usage
++  /// courant en français, ex: "10,5") en plus du point. Retourne `null`
++  /// au lieu de lancer une exception sur une saisie invalide — à utiliser
++  /// partout où un montant est parsé depuis un champ utilisateur, pour
++  /// éviter un crash sur "10,5" ou un texte non numérique.
++  double? toLocaleDouble() => double.tryParse(trim().replaceAll(',', '.'));
+ }
+\ No newline at end of file

@@ -27,14 +27,29 @@ class LedgerBalances {
     return balanceOf(address) >= amount;
   }
 
-  /// Applique le mouvement : débite l'expéditeur (sauf mint), crédite le
-  /// destinataire. À appeler UNE SEULE FOIS par transaction, uniquement
-  /// après validation complète (structure + signature + solde + nonce).
-  void apply(String from, String to, BigInt amount) {
-    if (!Genesis.isMintAddress(from)) {
-      _balances[from] = balanceOf(from) - amount;
+  /// Débite `address` de `amount` — utilisé par un bloc `send` ACCEPTÉ.
+  /// Ne crédite personne : les fonds restent "en attente" jusqu'à ce
+  /// qu'un `receive` correspondant les réclame (voir DagEngine).
+  void debit(String address, BigInt amount) {
+    if (!Genesis.isMintAddress(address)) {
+      _balances[address] = balanceOf(address) - amount;
     }
-    _balances[to] = balanceOf(to) + amount;
+  }
+
+  /// Crédite `address` de `amount` — utilisé par un bloc `receive`
+  /// ACCEPTÉ (le compte qui réclame un `send`), ou par la transaction
+  /// de mint (genesis), le seul cas où un crédit n'a pas de débit
+  /// correspondant ailleurs dans le ledger.
+  void credit(String address, BigInt amount) {
+    _balances[address] = balanceOf(address) + amount;
+  }
+
+  /// Conservé pour compatibilité : débite `from` et crédite `to` en une
+  /// fois. N'est plus utilisé que pour le cas mint (from = adresse de
+  /// mint, exemptée de débit par construction — voir `debit`).
+  void apply(String from, String to, BigInt amount) {
+    debit(from, amount);
+    credit(to, amount);
   }
 
   /// Restaure un état de solde déjà calculé (ex: après relecture du
