@@ -47,6 +47,10 @@ class WalletRepository {
     }
   }
 
+  Future<void> removeAll() async {
+    _box.removeAll();
+  }
+
   Future<void> load() async {
     // No-op for ObjectBox
   }

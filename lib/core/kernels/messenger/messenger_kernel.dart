@@ -109,5 +109,13 @@ class MessengerKernel {
         .toList();
   }
 
+  void clearHistory(String peerKey) {
+    _msgBox.query(ChatMessageEntity_.peerKey.equals(peerKey)).build().remove();
+  }
+
+  void clearAllHistory() {
+    _msgBox.removeAll();
+  }
+
   void dispose() => _messageController.close();
 }

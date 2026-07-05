@@ -80,7 +80,6 @@ class ChatProvider extends ChangeNotifier {
 
   void send(String peerId, String text) {
     if (text.trim().isEmpty) return;
-    node.sendChat(peerId, text);
     messagesWith(peerId).add({
       "type": "chat",
       "from": node.nodeId,
@@ -89,6 +88,11 @@ class ChatProvider extends ChangeNotifier {
       "time": DateTime.now().toIso8601String(),
     });
     notifyListeners();
+    try {
+      node.sendChat(peerId, text);
+    } catch (_) {
+      // Échec P2P silencieux — le message est déjà affiché localement
+    }
   }
 
   Future<bool> sendCrypto(String toAddress, BigInt amount) async {
@@ -108,6 +112,18 @@ class ChatProvider extends ChangeNotifier {
       notifyListeners();
     }
     return ok;
+  }
+
+  void clearHistory(String peerId) {
+    _conversations.remove(peerId);
+    node.messengerKernel.clearHistory(peerId);
+    notifyListeners();
+  }
+
+  void clearAllHistory() {
+    _conversations.clear();
+    node.messengerKernel.clearAllHistory();
+    notifyListeners();
   }
 
   @override

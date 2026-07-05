@@ -24,6 +24,10 @@ class KeypairStore {
     return await _storage.read(key: '$_prefix$address');
   }
 
+  static Future<void> clearAll() async {
+    await _storage.deleteAll();
+  }
+
   static Future<SimpleKeyPair?> load(String address) async {
     final hex = await _storage.read(key: '$_prefix$address');
     if (hex == null || hex.isEmpty) return null;

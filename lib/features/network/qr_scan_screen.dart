@@ -51,32 +51,34 @@ class _QrScanScreenState extends State<QrScanScreen> {
           ),
         ],
       ),
-      body: Stack(
-        fit: StackFit.expand,
-        children: [
-          QRView(
-            key: qrKey,
-            onQRViewCreated: _onQRViewCreated,
-            overlay: QrScannerOverlayShape(
-              borderColor: Colors.white,
-              borderRadius: 16,
-              borderLength: 30,
-              borderWidth: 2,
-              cutOutSize: 240,
+      body: SafeArea(
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            QRView(
+              key: qrKey,
+              onQRViewCreated: _onQRViewCreated,
+              overlay: QrScannerOverlayShape(
+                borderColor: Colors.white,
+                borderRadius: 16,
+                borderLength: 30,
+                borderWidth: 2,
+                cutOutSize: 240,
+              ),
+              onPermissionSet: (ctrl, p) => _onPermissionSet(context, ctrl, p),
             ),
-            onPermissionSet: (ctrl, p) => _onPermissionSet(context, ctrl, p),
-          ),
-          const Positioned(
-            bottom: 32,
-            left: 0,
-            right: 0,
-            child: Text(
-              "Cadre le QR code du pair à ajouter",
-              textAlign: TextAlign.center,
-              style: TextStyle(color: Colors.white, fontSize: 14),
+            const Positioned(
+              bottom: 32,
+              left: 0,
+              right: 0,
+              child: Text(
+                "Cadre le QR code du pair à ajouter",
+                textAlign: TextAlign.center,
+                style: TextStyle(color: Colors.white, fontSize: 14),
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

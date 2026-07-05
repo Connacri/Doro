@@ -50,6 +50,10 @@ class WalletCore {
     return true;
   }
 
+  void clear() {
+    _wallets.clear();
+  }
+
   bool debugFaucet(String address, BigInt amount) {
     final wallet = _wallets[address];
     if (wallet == null) return false;

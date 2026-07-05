@@ -23,17 +23,21 @@ class _ChatScreenState extends State<ChatScreen> {
     super.dispose();
   }
 
-  void _send(BuildContext context) {
+  void _send() {
     final text = controller.text;
     if (text.trim().isEmpty) return;
-    context.read<ChatProvider>().send(widget.peerId, text);
-    controller.clear();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (scrollCtrl.hasClients) {
-        scrollCtrl.animateTo(scrollCtrl.position.maxScrollExtent,
-            duration: const Duration(milliseconds: 200), curve: Curves.easeOut);
-      }
-    });
+    try {
+      context.read<ChatProvider>().send(widget.peerId, text);
+      controller.clear();
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (scrollCtrl.hasClients) {
+          scrollCtrl.animateTo(scrollCtrl.position.maxScrollExtent,
+              duration: const Duration(milliseconds: 200), curve: Curves.easeOut);
+        }
+      });
+    } catch (_) {
+      // Échec silencieux — l'utilisateur peut réessayer
+    }
   }
 
   void _sendCrypto(BuildContext context) {
@@ -131,11 +135,11 @@ class _ChatScreenState extends State<ChatScreen> {
                     child: TextField(
                       controller: controller,
                       decoration: const InputDecoration(hintText: "Écris un message...", border: OutlineInputBorder()),
-                      onSubmitted: (_) => _send(context),
+                      onSubmitted: (_) => _send(),
                     ),
                   ),
                   const SizedBox(width: 8),
-                  IconButton.filled(icon: const Icon(Icons.send), onPressed: () => _send(context)),
+                  IconButton.filled(icon: const Icon(Icons.send), onPressed: _send),
                 ],
               ),
             ),

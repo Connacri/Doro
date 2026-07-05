@@ -46,7 +46,7 @@ wss.on('connection', (ws) => {
         if (targetWs && targetWs.readyState === WebSocket.OPEN) {
           targetWs.send(JSON.stringify({
             ...data,
-            from: registeredId,
+            from: registeredId || data.from,
           }));
         } else {
           ws.send(JSON.stringify({
@@ -60,7 +60,7 @@ wss.on('connection', (ws) => {
       // broadcast to all other peers
       for (const [id, sock] of peers) {
         if (id !== registeredId && sock.readyState === WebSocket.OPEN) {
-          sock.send(JSON.stringify({ ...data, from: registeredId }));
+          sock.send(JSON.stringify({ ...data, from: registeredId || data.from }));
         }
       }
     } catch (e) {
@@ -70,18 +70,24 @@ wss.on('connection', (ws) => {
 
   ws.on('close', () => {
     if (registeredId) {
-      peers.delete(registeredId);
-      console.log(`Peer disconnected: ${registeredId} (total: ${peers.size})`);
+      // Only delete if this specific WebSocket connection is the one registered.
+      // If the peer has reconnected and overwritten the map entry, keep the new one.
+      if (peers.get(registeredId) === ws) {
+        peers.delete(registeredId);
+        console.log(`Peer disconnected: ${registeredId} (total: ${peers.size})`);
 
-      // notify remaining peers
-      const peerList = Array.from(peers.keys());
-      for (const [id, sock] of peers) {
-        if (sock.readyState === WebSocket.OPEN) {
-          sock.send(JSON.stringify({
-            type: 'peer_list',
-            peers: peerList,
-          }));
+        // notify remaining peers
+        const peerList = Array.from(peers.keys());
+        for (const [id, sock] of peers) {
+          if (sock.readyState === WebSocket.OPEN) {
+            sock.send(JSON.stringify({
+              type: 'peer_list',
+              peers: peerList,
+            }));
+          }
         }
+      } else {
+        console.log(`Superseded connection closed for: ${registeredId}; keeping active connection`);
       }
     }
   });
