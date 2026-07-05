@@ -14,6 +14,8 @@ class TxEntity {
   final int nonce;
   final String senderPublicKey;
   final String parents;
+  final String type;
+  final String? linkedSendId;
 
   TxEntity({
     this.id = 0,
@@ -26,5 +28,7 @@ class TxEntity {
     this.nonce = 0,
     this.senderPublicKey = "",
     this.parents = "",
+    this.type = "send",
+    this.linkedSendId,
   });
 }

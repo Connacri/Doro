@@ -69,7 +69,7 @@ final _entities = <obx_int.ModelEntity>[
   obx_int.ModelEntity(
     id: const obx_int.IdUid(2, 7311780424249181613),
     name: 'TxEntity',
-    lastPropertyId: const obx_int.IdUid(10, 8935240952171975496),
+    lastPropertyId: const obx_int.IdUid(12, 9061866768343648321),
     flags: 0,
     properties: <obx_int.ModelProperty>[
       obx_int.ModelProperty(
@@ -130,6 +130,18 @@ final _entities = <obx_int.ModelEntity>[
       obx_int.ModelProperty(
         id: const obx_int.IdUid(10, 8935240952171975496),
         name: 'parents',
+        type: 9,
+        flags: 0,
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(11, 8551615262993657177),
+        name: 'type',
+        type: 9,
+        flags: 0,
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(12, 9061866768343648321),
+        name: 'linkedSendId',
         type: 9,
         flags: 0,
       ),
@@ -534,7 +546,11 @@ obx_int.ModelDefinition getObjectBoxModel() {
         final signatureOffset = fbb.writeString(object.signature);
         final senderPublicKeyOffset = fbb.writeString(object.senderPublicKey);
         final parentsOffset = fbb.writeString(object.parents);
-        fbb.startTable(11);
+        final typeOffset = fbb.writeString(object.type);
+        final linkedSendIdOffset = object.linkedSendId == null
+            ? null
+            : fbb.writeString(object.linkedSendId!);
+        fbb.startTable(13);
         fbb.addInt64(0, object.id);
         fbb.addOffset(1, txIdOffset);
         fbb.addOffset(2, fromOffset);
@@ -545,6 +561,8 @@ obx_int.ModelDefinition getObjectBoxModel() {
         fbb.addInt64(7, object.nonce);
         fbb.addOffset(8, senderPublicKeyOffset);
         fbb.addOffset(9, parentsOffset);
+        fbb.addOffset(10, typeOffset);
+        fbb.addOffset(11, linkedSendIdOffset);
         fbb.finish(fbb.endTable());
         return object.id;
       },
@@ -590,6 +608,12 @@ obx_int.ModelDefinition getObjectBoxModel() {
         final parentsParam = const fb.StringReader(
           asciiOptimization: true,
         ).vTableGet(buffer, rootOffset, 22, '');
+        final typeParam = const fb.StringReader(
+          asciiOptimization: true,
+        ).vTableGet(buffer, rootOffset, 24, '');
+        final linkedSendIdParam = const fb.StringReader(
+          asciiOptimization: true,
+        ).vTableGetNullable(buffer, rootOffset, 26);
         final object = TxEntity(
           id: idParam,
           txId: txIdParam,
@@ -601,6 +625,8 @@ obx_int.ModelDefinition getObjectBoxModel() {
           nonce: nonceParam,
           senderPublicKey: senderPublicKeyParam,
           parents: parentsParam,
+          type: typeParam,
+          linkedSendId: linkedSendIdParam,
         );
 
         return object;
@@ -1029,6 +1055,16 @@ class TxEntity_ {
   /// See [TxEntity.parents].
   static final parents = obx.QueryStringProperty<TxEntity>(
     _entities[1].properties[9],
+  );
+
+  /// See [TxEntity.type].
+  static final type = obx.QueryStringProperty<TxEntity>(
+    _entities[1].properties[10],
+  );
+
+  /// See [TxEntity.linkedSendId].
+  static final linkedSendId = obx.QueryStringProperty<TxEntity>(
+    _entities[1].properties[11],
   );
 }
 
