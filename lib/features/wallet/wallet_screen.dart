@@ -123,10 +123,51 @@ class _WalletScreenState extends State<WalletScreen> {
     );
   }
 
+  Future<void> _showFirstLaunchChoice(BuildContext context) async {
+    final provider = context.read<WalletProvider>();
+    final choice = await showDialog<String>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        title: const Text("Bienvenue sur Doro"),
+        content: const Text("Crée un nouveau wallet ou restaures-en un existant."),
+        actions: [
+          FilledButton.icon(
+            icon: const Icon(Icons.add),
+            label: const Text("Créer un wallet"),
+            onPressed: () => Navigator.of(ctx).pop("create"),
+          ),
+          const SizedBox(height: 8),
+          TextButton.icon(
+            icon: const Icon(Icons.key),
+            label: const Text("Importer une seed"),
+            onPressed: () => Navigator.of(ctx).pop("import"),
+          ),
+        ],
+      ),
+    );
+    if (!context.mounted) return;
+    if (choice == "create") {
+      final result = await provider.createWallet();
+      if (context.mounted) {
+        await _showBackupDialog(context, result.seedHex, auto: false);
+      }
+    } else if (choice == "import") {
+      _importWallet(context);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final provider = context.watch<WalletProvider>();
     final ledger = context.watch<LedgerProvider>();
+
+    if (provider.wallets.isEmpty && !_backupPromptShown) {
+      _backupPromptShown = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (context.mounted) _showFirstLaunchChoice(context);
+      });
+    }
 
     if (!_backupPromptShown && provider.pendingBackupSeed != null) {
       _backupPromptShown = true;
@@ -146,6 +187,18 @@ class _WalletScreenState extends State<WalletScreen> {
           IconButton(icon: const Icon(Icons.key), tooltip: "Importer un wallet", onPressed: () => _importWallet(context)),
         ],
       ),
+      floatingActionButton: provider.wallets.isNotEmpty
+          ? FloatingActionButton.extended(
+              onPressed: () async {
+                final result = await context.read<WalletProvider>().createWallet();
+                if (context.mounted) {
+                  await _showBackupDialog(context, result.seedHex, auto: false);
+                }
+              },
+              icon: const Icon(Icons.add),
+              label: const Text("Créer un wallet"),
+            )
+          : null,
       body: SafeArea(
         child: ListView(
           children: [

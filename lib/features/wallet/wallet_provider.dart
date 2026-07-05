@@ -44,11 +44,6 @@ class WalletProvider extends ChangeNotifier {
     try {
       await repo.load();
       _restoreFromRepo();
-
-      if (core.all().isEmpty) {
-        final result = await createWallet();
-        pendingBackupSeed = result.seedHex;
-      }
     } catch (e) {
       Logger.error("Erreur init wallet: $e");
     }
@@ -87,9 +82,6 @@ class WalletProvider extends ChangeNotifier {
   /// l'utilisateur pour sauvegarde (seed = sa clé privée, NECESSAIRE
   /// pour récupérer l'accès si l'appareil est perdu ou réinitialisé).
   Future<({Wallet wallet, String seedHex})> createWallet() async {
-    if (core.all().isNotEmpty) {
-      throw StateError("Un wallet existe déjà — impossible d'en créer un second");
-    }
     final keyPair = (await _crypto.generateKeyPair()) as SimpleKeyPair;
     final publicKey = await keyPair.extractPublicKey();
     final pubKeyHex = _bytesToHex(publicKey.bytes);
