@@ -18,6 +18,8 @@ import 'core/storage/entities/chat_message_entity.dart';
 import 'core/storage/entities/contact_entity.dart';
 import 'core/storage/entities/order_entity.dart';
 import 'core/storage/entities/peer_entity.dart';
+import 'core/storage/entities/peer_profile_entity.dart';
+import 'core/storage/entities/profile_entity.dart';
 import 'core/storage/entities/trade_entity.dart';
 import 'core/storage/entities/tx_entity.dart';
 import 'core/storage/entities/wallet_entity.dart';
@@ -413,6 +415,93 @@ final _entities = <obx_int.ModelEntity>[
     relations: <obx_int.ModelRelation>[],
     backlinks: <obx_int.ModelBacklink>[],
   ),
+  obx_int.ModelEntity(
+    id: const obx_int.IdUid(8, 7216533991442310965),
+    name: 'PeerProfileEntity',
+    lastPropertyId: const obx_int.IdUid(6, 6043335349626662000),
+    flags: 0,
+    properties: <obx_int.ModelProperty>[
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(1, 8997112812854033075),
+        name: 'id',
+        type: 6,
+        flags: 1,
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(2, 7207355391859957669),
+        name: 'peerId',
+        type: 9,
+        flags: 2048,
+        indexId: const obx_int.IdUid(7, 183303440657801944),
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(3, 6754269803927673619),
+        name: 'displayName',
+        type: 9,
+        flags: 0,
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(4, 2105252199250172156),
+        name: 'bio',
+        type: 9,
+        flags: 0,
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(5, 9121653604040444335),
+        name: 'photoBase64',
+        type: 9,
+        flags: 0,
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(6, 6043335349626662000),
+        name: 'updatedAt',
+        type: 6,
+        flags: 0,
+      ),
+    ],
+    relations: <obx_int.ModelRelation>[],
+    backlinks: <obx_int.ModelBacklink>[],
+  ),
+  obx_int.ModelEntity(
+    id: const obx_int.IdUid(9, 5143334093504545345),
+    name: 'ProfileEntity',
+    lastPropertyId: const obx_int.IdUid(5, 1977282442002792681),
+    flags: 0,
+    properties: <obx_int.ModelProperty>[
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(1, 3327711399650183452),
+        name: 'id',
+        type: 6,
+        flags: 1,
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(2, 626363126233937831),
+        name: 'displayName',
+        type: 9,
+        flags: 0,
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(3, 2027296308692474694),
+        name: 'bio',
+        type: 9,
+        flags: 0,
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(4, 3459332146126432609),
+        name: 'photoPath',
+        type: 9,
+        flags: 0,
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(5, 1977282442002792681),
+        name: 'updatedAt',
+        type: 6,
+        flags: 0,
+      ),
+    ],
+    relations: <obx_int.ModelRelation>[],
+    backlinks: <obx_int.ModelBacklink>[],
+  ),
 ];
 
 /// Shortcut for [obx.Store.new] that passes [getObjectBoxModel] and for Flutter
@@ -458,8 +547,8 @@ obx_int.ModelDefinition getObjectBoxModel() {
     // Typically, this is done with `dart run build_runner build`.
     generatorVersion: obx_int.GeneratorVersion.v2025_12_16,
     entities: _entities,
-    lastEntityId: const obx_int.IdUid(7, 8669368689967754010),
-    lastIndexId: const obx_int.IdUid(6, 5031784824469073300),
+    lastEntityId: const obx_int.IdUid(9, 5143334093504545345),
+    lastIndexId: const obx_int.IdUid(7, 183303440657801944),
     lastRelationId: const obx_int.IdUid(0, 0),
     lastSequenceId: const obx_int.IdUid(0, 0),
     retiredEntityUids: const [],
@@ -972,6 +1061,124 @@ obx_int.ModelDefinition getObjectBoxModel() {
         return object;
       },
     ),
+    PeerProfileEntity: obx_int.EntityDefinition<PeerProfileEntity>(
+      model: _entities[7],
+      toOneRelations: (PeerProfileEntity object) => [],
+      toManyRelations: (PeerProfileEntity object) => {},
+      getId: (PeerProfileEntity object) => object.id,
+      setId: (PeerProfileEntity object, int id) {
+        object.id = id;
+      },
+      objectToFB: (PeerProfileEntity object, fb.Builder fbb) {
+        final peerIdOffset = fbb.writeString(object.peerId);
+        final displayNameOffset = fbb.writeString(object.displayName);
+        final bioOffset = fbb.writeString(object.bio);
+        final photoBase64Offset = fbb.writeString(object.photoBase64);
+        fbb.startTable(7);
+        fbb.addInt64(0, object.id);
+        fbb.addOffset(1, peerIdOffset);
+        fbb.addOffset(2, displayNameOffset);
+        fbb.addOffset(3, bioOffset);
+        fbb.addOffset(4, photoBase64Offset);
+        fbb.addInt64(5, object.updatedAt);
+        fbb.finish(fbb.endTable());
+        return object.id;
+      },
+      objectFromFB: (obx.Store store, ByteData fbData) {
+        final buffer = fb.BufferContext(fbData);
+        final rootOffset = buffer.derefObject(0);
+        final idParam = const fb.Int64Reader().vTableGet(
+          buffer,
+          rootOffset,
+          4,
+          0,
+        );
+        final peerIdParam = const fb.StringReader(
+          asciiOptimization: true,
+        ).vTableGet(buffer, rootOffset, 6, '');
+        final displayNameParam = const fb.StringReader(
+          asciiOptimization: true,
+        ).vTableGet(buffer, rootOffset, 8, '');
+        final bioParam = const fb.StringReader(
+          asciiOptimization: true,
+        ).vTableGet(buffer, rootOffset, 10, '');
+        final photoBase64Param = const fb.StringReader(
+          asciiOptimization: true,
+        ).vTableGet(buffer, rootOffset, 12, '');
+        final updatedAtParam = const fb.Int64Reader().vTableGet(
+          buffer,
+          rootOffset,
+          14,
+          0,
+        );
+        final object = PeerProfileEntity(
+          id: idParam,
+          peerId: peerIdParam,
+          displayName: displayNameParam,
+          bio: bioParam,
+          photoBase64: photoBase64Param,
+          updatedAt: updatedAtParam,
+        );
+
+        return object;
+      },
+    ),
+    ProfileEntity: obx_int.EntityDefinition<ProfileEntity>(
+      model: _entities[8],
+      toOneRelations: (ProfileEntity object) => [],
+      toManyRelations: (ProfileEntity object) => {},
+      getId: (ProfileEntity object) => object.id,
+      setId: (ProfileEntity object, int id) {
+        object.id = id;
+      },
+      objectToFB: (ProfileEntity object, fb.Builder fbb) {
+        final displayNameOffset = fbb.writeString(object.displayName);
+        final bioOffset = fbb.writeString(object.bio);
+        final photoPathOffset = fbb.writeString(object.photoPath);
+        fbb.startTable(6);
+        fbb.addInt64(0, object.id);
+        fbb.addOffset(1, displayNameOffset);
+        fbb.addOffset(2, bioOffset);
+        fbb.addOffset(3, photoPathOffset);
+        fbb.addInt64(4, object.updatedAt);
+        fbb.finish(fbb.endTable());
+        return object.id;
+      },
+      objectFromFB: (obx.Store store, ByteData fbData) {
+        final buffer = fb.BufferContext(fbData);
+        final rootOffset = buffer.derefObject(0);
+        final idParam = const fb.Int64Reader().vTableGet(
+          buffer,
+          rootOffset,
+          4,
+          0,
+        );
+        final displayNameParam = const fb.StringReader(
+          asciiOptimization: true,
+        ).vTableGet(buffer, rootOffset, 6, '');
+        final bioParam = const fb.StringReader(
+          asciiOptimization: true,
+        ).vTableGet(buffer, rootOffset, 8, '');
+        final photoPathParam = const fb.StringReader(
+          asciiOptimization: true,
+        ).vTableGet(buffer, rootOffset, 10, '');
+        final updatedAtParam = const fb.Int64Reader().vTableGet(
+          buffer,
+          rootOffset,
+          12,
+          0,
+        );
+        final object = ProfileEntity(
+          id: idParam,
+          displayName: displayNameParam,
+          bio: bioParam,
+          photoPath: photoPathParam,
+          updatedAt: updatedAtParam,
+        );
+
+        return object;
+      },
+    ),
   };
 
   return obx_int.ModelDefinition(model, bindings);
@@ -1255,5 +1462,66 @@ class TradeEntity_ {
   /// See [TradeEntity.txId].
   static final txId = obx.QueryStringProperty<TradeEntity>(
     _entities[6].properties[10],
+  );
+}
+
+/// [PeerProfileEntity] entity fields to define ObjectBox queries.
+class PeerProfileEntity_ {
+  /// See [PeerProfileEntity.id].
+  static final id = obx.QueryIntegerProperty<PeerProfileEntity>(
+    _entities[7].properties[0],
+  );
+
+  /// See [PeerProfileEntity.peerId].
+  static final peerId = obx.QueryStringProperty<PeerProfileEntity>(
+    _entities[7].properties[1],
+  );
+
+  /// See [PeerProfileEntity.displayName].
+  static final displayName = obx.QueryStringProperty<PeerProfileEntity>(
+    _entities[7].properties[2],
+  );
+
+  /// See [PeerProfileEntity.bio].
+  static final bio = obx.QueryStringProperty<PeerProfileEntity>(
+    _entities[7].properties[3],
+  );
+
+  /// See [PeerProfileEntity.photoBase64].
+  static final photoBase64 = obx.QueryStringProperty<PeerProfileEntity>(
+    _entities[7].properties[4],
+  );
+
+  /// See [PeerProfileEntity.updatedAt].
+  static final updatedAt = obx.QueryIntegerProperty<PeerProfileEntity>(
+    _entities[7].properties[5],
+  );
+}
+
+/// [ProfileEntity] entity fields to define ObjectBox queries.
+class ProfileEntity_ {
+  /// See [ProfileEntity.id].
+  static final id = obx.QueryIntegerProperty<ProfileEntity>(
+    _entities[8].properties[0],
+  );
+
+  /// See [ProfileEntity.displayName].
+  static final displayName = obx.QueryStringProperty<ProfileEntity>(
+    _entities[8].properties[1],
+  );
+
+  /// See [ProfileEntity.bio].
+  static final bio = obx.QueryStringProperty<ProfileEntity>(
+    _entities[8].properties[2],
+  );
+
+  /// See [ProfileEntity.photoPath].
+  static final photoPath = obx.QueryStringProperty<ProfileEntity>(
+    _entities[8].properties[3],
+  );
+
+  /// See [ProfileEntity.updatedAt].
+  static final updatedAt = obx.QueryIntegerProperty<ProfileEntity>(
+    _entities[8].properties[4],
   );
 }

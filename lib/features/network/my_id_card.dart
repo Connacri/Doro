@@ -7,8 +7,9 @@ import 'package:qr_flutter/qr_flutter.dart';
 /// autre canal) pour m'ajouter comme pair.
 class MyIdCard extends StatelessWidget {
   final String myId;
+  final String title;
 
-  const MyIdCard({super.key, required this.myId});
+  const MyIdCard({super.key, required this.myId, this.title = "Mon ID (à partager)"});
 
   void _copyId(BuildContext context) {
     Clipboard.setData(ClipboardData(text: myId));
@@ -24,9 +25,9 @@ class MyIdCard extends StatelessWidget {
         padding: const EdgeInsets.all(16),
         child: Column(
           children: [
-            const Text(
-              "Mon ID (à partager)",
-              style: TextStyle(fontWeight: FontWeight.bold),
+            Text(
+              title,
+              style: const TextStyle(fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 12),
             Container(

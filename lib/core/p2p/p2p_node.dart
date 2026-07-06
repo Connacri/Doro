@@ -15,8 +15,10 @@ import 'webrtc_engine.dart';
 import 'signaling_client.dart';
 import 'peer_manager.dart';
 import '../kernels/market/market_kernel.dart';
+import '../kernels/profile/profile_kernel.dart';
 import '../storage/repositories/order_repository.dart';
 import '../storage/repositories/trade_repository.dart';
+import '../storage/repositories/profile_repository.dart';
 import '../security/sybil_protection.dart';
 
 class P2PNode {
@@ -41,6 +43,8 @@ class P2PNode {
   Timer? _healthTimer;
 
   late final MarketKernel marketKernel;
+  late final ProfileKernel profileKernel;
+  late final ProfileRepository profileRepo;
   late final OrderRepository orderRepo;
   late final TradeRepository tradeRepo;
 
@@ -79,6 +83,10 @@ class P2PNode {
       // solde local le concernant reste incomplet (voir WalletKernel.
       // requestSync) et je peux rejeter à tort un paiement légitime.
       walletKernel.requestSync(peerId);
+      // Lui envoie mon profil (nom/bio/photo) sans qu'il ait à le
+      // demander — comportement symétrique : il fera de même pour moi
+      // dès que SON canal vers moi s'ouvre de son côté.
+      profileKernel.announceTo(peerId);
       _channelReadyController.add(peerId);
       _networkChangeController.add(null);
     };
@@ -103,6 +111,15 @@ class P2PNode {
       p2p: p2p,
       db: db,
     );
+
+    profileRepo = ProfileRepository(db);
+    profileKernel = ProfileKernel(
+      nodeId: nodeId,
+      p2p: p2p,
+      repo: profileRepo,
+      sybil: sybil,
+    );
+
     orderRepo = OrderRepository(db);
     tradeRepo = TradeRepository(db);
     marketKernel = MarketKernel(identity: identity, p2p: p2p, orderRepo: orderRepo, tradeRepo: tradeRepo, dag: dag);
@@ -110,6 +127,7 @@ class P2PNode {
 
   Stream<Map<String, dynamic>> get messages => messengerKernel.messages;
   Stream<void> get walletChanges => walletKernel.walletChanges;
+  Stream<String> get profileChanges => profileKernel.profileChanges;
   DagEngine get dag => walletKernel.dag;
   WalletCore get wallet => walletKernel.wallet;
 
@@ -282,6 +300,7 @@ class P2PNode {
   Future<void> cancelFriendRequest(String toPeerId) => messengerKernel.cancelFriendRequest(toPeerId);
   void removeFriend(String publicKey) => messengerKernel.removeFriend(publicKey);
   Future<void> selfApprove(String txId) => walletKernel.selfApprove(txId);
+  Future<void> broadcastMyProfile() => profileKernel.broadcastMine();
 
   void stop() {
     _healthTimer?.cancel();
@@ -289,6 +308,7 @@ class P2PNode {
     _signaling?.close();
     walletKernel.dispose();
     messengerKernel.dispose();
+    profileKernel.dispose();
     _networkChangeController.close();
     _channelReadyController.close();
     marketKernel.dispose();

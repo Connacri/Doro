@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../shared/extensions/string_ext.dart';
 import 'chat_provider.dart';
+import '../profile/peer_profile_screen.dart';
 
 class ChatScreen extends StatefulWidget {
   final String peerId;
@@ -98,7 +99,12 @@ class _ChatScreenState extends State<ChatScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(widget.peerName),
+        title: InkWell(
+          onTap: () => Navigator.of(context).push(
+            MaterialPageRoute(builder: (_) => PeerProfileScreen(peerId: widget.peerId)),
+          ),
+          child: Text(widget.peerName),
+        ),
         actions: [
           IconButton(icon: const Icon(Icons.currency_bitcoin), tooltip: "Envoyer Crypto", onPressed: () => _sendCrypto(context)),
           Padding(

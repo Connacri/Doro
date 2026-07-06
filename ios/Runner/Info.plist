@@ -25,7 +25,9 @@
 		<key>CFBundleVersion</key>
 		<string>$(FLUTTER_BUILD_NUMBER)</string>
 		<key>NSCameraUsageDescription</key>
-		<string>Doro utilise la caméra pour scanner les QR codes des pairs.</string>
+		<string>Doro utilise la caméra pour scanner les QR codes des pairs et prendre une photo de profil.</string>
+		<key>NSPhotoLibraryUsageDescription</key>
+		<string>Doro a besoin d'accéder à vos photos pour définir votre photo de profil.</string>
 		<key>LSRequiresIPhoneOS</key>
 		<true/>
 		<key>UIApplicationSceneManifest</key>

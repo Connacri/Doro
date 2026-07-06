@@ -10,8 +10,6 @@ import 'features/chat/chats_screen.dart';
 import 'features/chat/chat_provider.dart';
 import 'features/ledger/ledger_provider.dart';
 import 'features/network/network_provider.dart';
-import 'features/network/profile_screen.dart';
-
 import 'core/storage/objectbox/store.dart';
 import 'core/storage/repositories/wallet_repository.dart';
 import 'core/storage/repositories/contact_repository.dart';
@@ -20,6 +18,9 @@ import 'core/bootstrap/bootstrap_service.dart';
 import 'core/utils/logger.dart';
 import 'core/utils/node_identity.dart';
 import 'features/market/market_provider.dart';
+import 'features/profile/profile_provider.dart';
+import 'features/profile/profile_screen.dart';
+import 'core/storage/repositories/profile_repository.dart';
 
 
 class DoroApp extends StatefulWidget {
@@ -33,6 +34,7 @@ class _DoroAppState extends State<DoroApp> with WidgetsBindingObserver {
   P2PNode? _node;
   late final WalletRepository _walletRepo;
   late final ContactRepository _contactRepo;
+  late final ProfileRepository _profileRepo;
 
   @override
   void initState() {
@@ -40,6 +42,7 @@ class _DoroAppState extends State<DoroApp> with WidgetsBindingObserver {
     WidgetsBinding.instance.addObserver(this);
     _walletRepo = WalletRepository(widget.db);
     _contactRepo = ContactRepository(widget.db);
+    _profileRepo = ProfileRepository(widget.db);
     if (!Platform.environment.containsKey('FLUTTER_TEST')) {
       _initNode();
     }
@@ -102,6 +105,7 @@ ChangeNotifierProxyProvider<WalletProvider, MarketProvider>(
   create: (_) => MarketProvider(node),
   update: (_, wallet, market) => market!..walletProvider = wallet,
 ),
+        ChangeNotifierProvider(create: (_) => ProfileProvider(_profileRepo, node: node)),
       ],
       child: MaterialApp(
         debugShowCheckedModeBanner: false,

@@ -337,10 +337,85 @@
         }
       ],
       "relations": []
+    },
+    {
+      "id": "8:7216533991442310965",
+      "lastPropertyId": "6:6043335349626662000",
+      "name": "PeerProfileEntity",
+      "properties": [
+        {
+          "id": "1:8997112812854033075",
+          "name": "id",
+          "type": 6,
+          "flags": 1
+        },
+        {
+          "id": "2:7207355391859957669",
+          "name": "peerId",
+          "indexId": "7:183303440657801944",
+          "type": 9,
+          "flags": 2048
+        },
+        {
+          "id": "3:6754269803927673619",
+          "name": "displayName",
+          "type": 9
+        },
+        {
+          "id": "4:2105252199250172156",
+          "name": "bio",
+          "type": 9
+        },
+        {
+          "id": "5:9121653604040444335",
+          "name": "photoBase64",
+          "type": 9
+        },
+        {
+          "id": "6:6043335349626662000",
+          "name": "updatedAt",
+          "type": 6
+        }
+      ],
+      "relations": []
+    },
+    {
+      "id": "9:5143334093504545345",
+      "lastPropertyId": "5:1977282442002792681",
+      "name": "ProfileEntity",
+      "properties": [
+        {
+          "id": "1:3327711399650183452",
+          "name": "id",
+          "type": 6,
+          "flags": 1
+        },
+        {
+          "id": "2:626363126233937831",
+          "name": "displayName",
+          "type": 9
+        },
+        {
+          "id": "3:2027296308692474694",
+          "name": "bio",
+          "type": 9
+        },
+        {
+          "id": "4:3459332146126432609",
+          "name": "photoPath",
+          "type": 9
+        },
+        {
+          "id": "5:1977282442002792681",
+          "name": "updatedAt",
+          "type": 6
+        }
+      ],
+      "relations": []
     }
   ],
-  "lastEntityId": "7:8669368689967754010",
-  "lastIndexId": "6:5031784824469073300",
+  "lastEntityId": "9:5143334093504545345",
+  "lastIndexId": "7:183303440657801944",
   "lastRelationId": "0:0",
   "lastSequenceId": "0:0",
   "modelVersion": 5,

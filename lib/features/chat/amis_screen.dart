@@ -1,10 +1,14 @@
 // lib/features/chat/amis_screen.dart
+import 'dart:convert';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'chat_provider.dart';
 import 'chat_screen.dart';
 import '../network/qr_scan_screen.dart';
 import '../network/my_id_card.dart';
+import '../profile/profile_provider.dart';
+import '../profile/peer_profile_screen.dart';
 
 /// Centre de gestion des contacts, façon grandes messageries :
 /// - Demandes reçues (accepter/refuser)
@@ -193,8 +197,23 @@ class AmisScreen extends StatelessWidget {
                   itemBuilder: (context, i) {
                     final c = friends[i];
                     final online = provider.isOnline(c.publicKey);
+                    final peerProfile = context.watch<ProfileProvider>().peerProfile(c.publicKey);
+                    Uint8List? photoBytes;
+                    if (peerProfile != null && peerProfile.photoBase64.isNotEmpty) {
+                      try {
+                        photoBytes = base64Decode(peerProfile.photoBase64);
+                      } catch (_) {
+                        photoBytes = null;
+                      }
+                    }
                     return ListTile(
-                      leading: CircleAvatar(child: Text(c.name.isNotEmpty ? c.name[0].toUpperCase() : "?")),
+                      leading: GestureDetector(
+                        onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => PeerProfileScreen(peerId: c.publicKey))),
+                        child: CircleAvatar(
+                          backgroundImage: photoBytes != null ? MemoryImage(photoBytes) : null,
+                          child: photoBytes == null ? Text(c.name.isNotEmpty ? c.name[0].toUpperCase() : "?") : null,
+                        ),
+                      ),
                       title: Text(c.name),
                       subtitle: Text(c.publicKey, style: const TextStyle(fontFamily: 'monospace', fontSize: 11), overflow: TextOverflow.ellipsis),
                       trailing: Row(mainAxisSize: MainAxisSize.min, children: [
