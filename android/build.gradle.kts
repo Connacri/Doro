@@ -17,12 +17,18 @@ subprojects {
 }
 subprojects {
     plugins.withId("com.android.library") {
-        val ext = project.extensions.findByType(com.android.build.api.dsl.LibraryExtension::class.java)
-        ext?.compileSdk = 36
+        val androidComponents = project.extensions.findByType(com.android.build.api.variant.LibraryAndroidComponentsExtension::class.java)
+        androidComponents?.finalizeDsl { dsl ->
+            println("--- Doro Build Config: Finalizing library DSL for ${project.name}, setting compileSdk to 36")
+            dsl.compileSdk = 36
+        }
     }
     plugins.withId("com.android.application") {
-        val ext = project.extensions.findByType(com.android.build.api.dsl.ApplicationExtension::class.java)
-        ext?.compileSdk = 36
+        val androidComponents = project.extensions.findByType(com.android.build.api.variant.ApplicationAndroidComponentsExtension::class.java)
+        androidComponents?.finalizeDsl { dsl ->
+            println("--- Doro Build Config: Finalizing application DSL for ${project.name}, setting compileSdk to 36")
+            dsl.compileSdk = 36
+        }
     }
 }
 
