@@ -16,7 +16,7 @@ coverage/
 **/linux/flutter/ephemeral/
 
 # =============================================================================
-# Android (keystore, signing)
+# Android (keystore, signing, build cache)
 # =============================================================================
 android/key.properties
 android/app/*.jks
@@ -28,6 +28,8 @@ android/app/release/
 *.keystore
 upload-keystore.jks
 upload-keystore.jks_base64.txt
+android/.kotlin/
+*.salive
 
 # =============================================================================
 # Secrets & Environment
