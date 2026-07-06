@@ -59,6 +59,12 @@ class P2PNode {
   final Map<String, int> _offerCountThisWindow = {};
   static const int _maxOffersPerSecond = 3;
 
+  /// Évite la double connexion : quand les deux pairs reçoivent
+  /// `peer_list` simultanément, chacun tente d'initier ET de répondre
+  /// pour la même paire, ce qui crée deux `PeerConnection` dont l'une
+  /// écrase l'autre dans le map — canaux instables, messages perdus.
+  final Set<String> _pendingConnections = {};
+
   P2PNode(this.identity, ObjectBoxStore db) : nodeId = identity.nodeId {
     p2p = WebRTCNetworkEngine(nodeId);
     peerManager = PeerManager(db, engine: p2p, sybil: sybil);
@@ -158,7 +164,13 @@ class P2PNode {
         final peers = List<String>.from(msg["peers"] ?? []);
         for (final pid in peers) {
           if (pid != nodeId && !p2p.peers.containsKey(pid)) {
-            connectToPeer(pid);
+            // Tie-break par ID : seul le pair avec l'ID le plus grand
+            // initie la connexion, l'autre attend l'offre entrante.
+            // Sans ça, les deux s'envoient une offre simultanément et
+            // aucun n'envoie de réponse → deadlock, messages perdus.
+            if (nodeId.compareTo(pid) > 0) {
+              connectToPeer(pid);
+            }
           }
         }
         break;
@@ -187,30 +199,52 @@ class P2PNode {
       Logger.warn("Offres WebRTC anormalement fréquentes de $peerId — ignorées");
       return;
     }
-    final answer = await p2p.acceptConnection(peerId, sdp);
-    if (answer != null && _signaling != null) {
-      _signaling!.send({
-        "type": "answer",
-        "to": peerId,
-        "from": nodeId,
-        "sdp": answer,
-      });
+    // Connexion déjà établie (notre offre a été acceptée plus tôt) :
+    // on ignore l'offre entrante.
+    if (p2p.isConnectedTo(peerId)) return;
+
+    // On avait aussi initié une connexion (tie-break ou race), on
+    // abandonne notre tentative : on accepte l'offre entrante plutôt
+    // que de laisser les deux envois d'offre sans réponse.
+    _pendingConnections.remove(peerId);
+
+    _pendingConnections.add(peerId);
+    try {
+      final answer = await p2p.acceptConnection(peerId, sdp);
+      if (answer != null && _signaling != null) {
+        _signaling!.send({
+          "type": "answer",
+          "to": peerId,
+          "from": nodeId,
+          "sdp": answer,
+        });
+      }
+      peerManager.registerPeer(Peer(id: peerId, address: "", lastSeen: DateTime.now()));
+      health.ping(peerId);
+    } finally {
+      _pendingConnections.remove(peerId);
     }
-    peerManager.registerPeer(Peer(id: peerId, address: "", lastSeen: DateTime.now()));
-    health.ping(peerId);
   }
 
   Future<void> connectToPeer(String peerId) async {
     if (peerManager.isBlocked(peerId)) return;
-    final offer = await p2p.createOffer(peerId);
-    if (offer != null && _signaling != null) {
-      _signaling!.send({
-        "type": "offer",
-        "to": peerId,
-        "from": nodeId,
-        "sdp": offer,
-      });
-      peerManager.registerPeer(Peer(id: peerId, address: "", lastSeen: DateTime.now()));
+    if (_pendingConnections.contains(peerId)) return;
+    if (p2p.isConnectedTo(peerId)) return;
+
+    _pendingConnections.add(peerId);
+    try {
+      final offer = await p2p.createOffer(peerId);
+      if (offer != null && _signaling != null) {
+        _signaling!.send({
+          "type": "offer",
+          "to": peerId,
+          "from": nodeId,
+          "sdp": offer,
+        });
+        peerManager.registerPeer(Peer(id: peerId, address: "", lastSeen: DateTime.now()));
+      }
+    } finally {
+      _pendingConnections.remove(peerId);
     }
   }
 

@@ -26,6 +26,7 @@ class WebRTCNetworkEngine {
   }
 
   Future<Map<String, dynamic>?> createOffer(String peerId) async {
+    if (_connections.containsKey(peerId)) return null;
     final conn = PeerConnection();
     await conn.init();
 
@@ -54,6 +55,7 @@ class WebRTCNetworkEngine {
   }
 
   Future<Map<String, dynamic>?> acceptConnection(String peerId, dynamic sdp) async {
+    if (_connections.containsKey(peerId)) return null;
     final conn = PeerConnection();
     await conn.init();
 
@@ -91,6 +93,11 @@ class WebRTCNetworkEngine {
     if (conn == null) return false;
     return conn.send(jsonEncode(data));
   }
+
+  /// Une connexion (en cours ou établie) existe-t-elle déjà pour ce pair ?
+  /// Évite les doubles connexions quand les deux pairs s'initient
+  /// simultanément.
+  bool isConnectedTo(String peerId) => _connections.containsKey(peerId);
 
   /// Le canal de données vers ce pair est-il actuellement ouvert et prêt
   /// à transmettre (par opposition à "en cours de négociation ICE").
