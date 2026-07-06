@@ -115,12 +115,12 @@ jobs:
             echo "WARNING: No keystore secret found. Build will use debug signing."
           fi
 
-      - name: Build APK (arm64-v8a)
-        run: |
-          flutter build apk --release \
-            --target-platform android-arm64 \
-            --build-name=${{ needs.version.outputs.version }} \
-            --build-number=${{ github.run_number }}
+#      - name: Build APK (arm64-v8a)
+#        run: |
+#          flutter build apk --release \
+#            --target-platform android-arm64 \
+#            --build-name=${{ needs.version.outputs.version }} \
+#            --build-number=${{ github.run_number }}
 
       - name: Build APK (universal)
         run: |
@@ -128,22 +128,22 @@ jobs:
             --build-name=${{ needs.version.outputs.version }} \
             --build-number=${{ github.run_number }}
 
-      - name: Build App Bundle
-        run: |
-          flutter build appbundle --release \
-            --build-name=${{ needs.version.outputs.version }} \
-            --build-number=${{ github.run_number }}
+#      - name: Build App Bundle
+#        run: |
+#          flutter build appbundle --release \
+#            --build-name=${{ needs.version.outputs.version }} \
+#            --build-number=${{ github.run_number }}
 
       - name: Prepare artifacts
         run: |
           VERSION="${{ needs.version.outputs.version }}"
           mkdir -p release
-          cp build/app/outputs/flutter-apk/app-arm64-v8a-release.apk \
-             "release/doro-android-arm64-v8a-$VERSION.apk" 2>/dev/null || true
+#          cp build/app/outputs/flutter-apk/app-arm64-v8a-release.apk \
+#             "release/doro-android-arm64-v8a-$VERSION.apk" 2>/dev/null || true
           cp build/app/outputs/flutter-apk/app-release.apk \
              "release/doro-android-universal-$VERSION.apk"
-          cp build/app/outputs/bundle/release/app-release.aab \
-             "release/doro-android-$VERSION.aab"
+#          cp build/app/outputs/bundle/release/app-release.aab \
+#             "release/doro-android-$VERSION.aab"
 
       - name: Upload APK (universal)
         uses: actions/upload-artifact@v4
@@ -152,19 +152,19 @@ jobs:
           path: release/doro-android-universal-*.apk
           retention-days: 30
 
-      - name: Upload APK (arm64)
-        uses: actions/upload-artifact@v4
-        with:
-          name: android-apk-arm64
-          path: release/doro-android-arm64-v8a-*.apk
-          retention-days: 30
-
-      - name: Upload AAB
-        uses: actions/upload-artifact@v4
-        with:
-          name: android-aab
-          path: release/doro-android-*.aab
-          retention-days: 30
+#      - name: Upload APK (arm64)
+#        uses: actions/upload-artifact@v4
+#        with:
+#          name: android-apk-arm64
+#          path: release/doro-android-arm64-v8a-*.apk
+#          retention-days: 30
+#
+#      - name: Upload AAB
+#        uses: actions/upload-artifact@v4
+#        with:
+#          name: android-aab
+#          path: release/doro-android-*.aab
+#          retention-days: 30
 
   ##############################################################################
   # Build Windows (portable ZIP only; installer optional)

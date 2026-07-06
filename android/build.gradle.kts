@@ -20,10 +20,13 @@ subprojects {
 }
 
 subprojects {
-    afterEvaluate {
-        (project.extensions.findByName("android") as? com.android.build.gradle.BaseExtension)?.let {
-            it.compileSdkVersion(36)
-        }
+    plugins.withId("com.android.library") {
+        val ext = project.extensions.findByType(com.android.build.api.dsl.LibraryExtension::class.java)
+        ext?.compileSdk = 36
+    }
+    plugins.withId("com.android.application") {
+        val ext = project.extensions.findByType(com.android.build.api.dsl.ApplicationExtension::class.java)
+        ext?.compileSdk = 36
     }
 }
 
