@@ -1,6 +1,5 @@
 // lib/core/p2p/p2p_node.dart
 import 'dart:async';
-import 'dart:math';
 import '../storage/objectbox/store.dart';
 import '../storage/repositories/tx_repository.dart';
 import '../storage/repositories/order_repository.dart';
@@ -23,7 +22,7 @@ import 'peer_manager.dart';
 import 'signaling_client.dart';
 
 class P2PNode {
-  final NodeIdentity identity;
+  final NodeIdentityKeyPair identity;
   final String nodeId;
   late final WebRTCNetworkEngine p2p;
   late final PeerManager peerManager;
