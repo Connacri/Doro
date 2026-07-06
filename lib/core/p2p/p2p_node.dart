@@ -134,6 +134,19 @@ class P2PNode {
         health.ping(nodeId);
         _handleSignal(msg);
       };
+
+      // Relaie les candidats ICE entre pairs via le serveur de signaling
+      // — sans ça, le SDP offre/réponse est échangé mais les chemins
+      // réseau ne peuvent pas être découverts, et le data channel ne
+      // s'ouvre jamais (messages en file d'attente indéfiniment).
+      p2p.onIceCandidate = (peerId, candidate) {
+        _signaling?.send({
+          "type": "ice",
+          "to": peerId,
+          "from": nodeId,
+          "candidate": candidate,
+        });
+      };
     }
 
     health.ping(nodeId);
