@@ -5,6 +5,7 @@ class SeedNodes {
     "wss://volte-dhyr.onrender.com",
     "wss://doro-1.onrender.com",
     "wss://doro-2.onrender.com",
+    "wss://doro-3.onrender.com",
   ];
 
   static List<String> getAll() => nodes;
