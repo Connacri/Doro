@@ -21,7 +21,9 @@ subprojects {
 
 subprojects {
     afterEvaluate {
-        project.extensions.findByType(com.android.build.gradle.BaseExtension::class.java)?.compileSdk = 36
+        (project.extensions.findByName("android") as? com.android.build.gradle.BaseExtension)?.let {
+            it.compileSdkVersion(36)
+        }
     }
 }
 
