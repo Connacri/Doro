@@ -12,6 +12,7 @@ import '../../storage/secure/keypair_store.dart';
 import '../../utils/id_generator.dart';
 import '../../utils/node_identity.dart';
 import '../../p2p/webrtc_engine.dart';
+import '../../security/sybil_protection.dart';
 import '../../utils/logger.dart';
 
 class WalletKernel {
@@ -24,10 +25,28 @@ class WalletKernel {
   final CryptoService crypto = CryptoService();
   final TxValidator _txValidator = TxValidator();
 
+  /// Réputation par pair — pénalisée à chaque message malformé ou signature
+  /// invalide, ce qui finit par bloquer/déconnecter un pair malveillant.
+  /// Injectable pour partager la même instance que `PeerManager` (un pair
+  /// banni côté connexion doit aussi l'être côté wallet, et vice-versa).
+  final SybilProtection sybil;
+
   final _walletChangeController = StreamController<void>.broadcast();
   Stream<void> get walletChanges => _walletChangeController.stream;
 
+  /// Plafonné pour éviter qu'un flot de votes (même valides) fasse grossir
+  /// cet ensemble indéfiniment en mémoire — éviction FIFO au-delà.
   final Set<String> _seenApprovals = {};
+  final List<String> _seenApprovalsOrder = [];
+  static const int _maxSeenApprovals = 5000;
+
+  /// Fenêtre glissante (1s) de comptage de messages par pair — limite le
+  /// nombre de tx/votes qu'un seul pair peut faire traiter par seconde,
+  /// quelle que soit leur validité. Une tx légitime jamais envoyée à ce
+  /// rythme par un utilisateur humain ; seul un spammeur atteint ce seuil.
+  final Map<String, int> _msgCountThisWindow = {};
+  final Map<String, DateTime> _windowStart = {};
+  static const int _maxMsgsPerSecond = 20;
 
   WalletKernel({
     required this.identity,
@@ -36,26 +55,63 @@ class WalletKernel {
     required this.wallet,
     required this.txRepo,
     required this.p2p,
-  }) {
+    SybilProtection? sybil,
+  }) : sybil = sybil ?? SybilProtection() {
     _setupHandlers();
+  }
+
+  /// `true` si `peerId` est encore autorisé à faire traiter un message ce
+  /// cycle-ci. Ne bloque jamais un pair inconnu (score neutre par défaut) —
+  /// seul un pair déjà explicitement banni (`sybil.isBlocked`) ou en
+  /// dépassement de débit est ignoré.
+  bool _admitMessage(String peerId) {
+    if (sybil.isBlocked(peerId)) return false;
+
+    final now = DateTime.now();
+    final start = _windowStart[peerId];
+    if (start == null || now.difference(start).inSeconds >= 1) {
+      _windowStart[peerId] = now;
+      _msgCountThisWindow[peerId] = 0;
+    }
+    final count = (_msgCountThisWindow[peerId] ?? 0) + 1;
+    _msgCountThisWindow[peerId] = count;
+
+    if (count > _maxMsgsPerSecond) {
+      // Débit anormal pour un humain — traité comme une tentative
+      // malveillante, pas juste ignoré silencieusement.
+      sybil.decreaseTrust(peerId);
+      return false;
+    }
+    return true;
+  }
+
+  void _rememberApproval(String approvalKey) {
+    if (_seenApprovals.length >= _maxSeenApprovals) {
+      final oldest = _seenApprovalsOrder.removeAt(0);
+      _seenApprovals.remove(oldest);
+    }
+    _seenApprovals.add(approvalKey);
+    _seenApprovalsOrder.add(approvalKey);
   }
 
   void _setupHandlers() {
     p2p.messages.listen((msg) {
+      if (!_admitMessage(msg.from)) return;
+
       final data = msg.data;
       if (data is Map<String, dynamic>) {
         switch (data["type"]) {
           case "tx":
-            _handleIncomingTx(data);
+            _handleIncomingTx(data, fromPeer: msg.from);
             break;
           case "tx_approve":
-            _handleIncomingApprove(data);
+            _handleIncomingApprove(data, fromPeer: msg.from);
             break;
           case "sync_request":
             _handleSyncRequest(data);
             break;
           case "sync_response":
-            _handleSyncResponse(data);
+            _handleSyncResponse(data, fromPeer: msg.from);
             break;
         }
       }
@@ -86,22 +142,31 @@ class WalletKernel {
     };
   }
 
-  Future<void> _handleIncomingTx(Map<String, dynamic> data) async {
+  Future<void> _handleIncomingTx(Map<String, dynamic> data, {String? fromPeer}) async {
     late final Transaction tx;
     try {
       tx = Transaction.fromJson(data);
     } catch (e) {
       Logger.warn("Transaction malformée ignorée : $e");
+      if (fromPeer != null) sybil.decreaseTrust(fromPeer);
       return;
     }
 
     if (!_txValidator.validate(tx)) {
       Logger.warn("Transaction ${tx.id} rejetée : validation structurelle échouée");
+      if (fromPeer != null) sybil.decreaseTrust(fromPeer);
       return;
     }
 
     if (!await _verifySignature(tx)) {
       Logger.warn("Transaction ${tx.id} rejetée : signature invalide");
+      // Une signature invalide ne peut jamais venir d'un émetteur honnête
+      // (il signe forcément juste) — c'est le signal le plus fiable
+      // d'un pair malveillant, pénalité plus lourde qu'un simple rejet.
+      if (fromPeer != null) {
+        sybil.decreaseTrust(fromPeer);
+        sybil.decreaseTrust(fromPeer);
+      }
       return;
     }
 
@@ -110,6 +175,13 @@ class WalletKernel {
       p2p.broadcast(data);
       await selfApprove(tx.id);
       await txRepo.save(tx);
+    } else if (result == DagAcceptResult.rejectedInsufficientBalance ||
+        result == DagAcceptResult.rejectedReplay ||
+        result == DagAcceptResult.rejectedTampered) {
+      // Signature valide mais contenu frauduleux (rejeu, double-dépense,
+      // falsification) — toujours suspect, même si moins grave qu'une
+      // signature cassée.
+      if (fromPeer != null) sybil.decreaseTrust(fromPeer);
     }
   }
 
@@ -170,21 +242,30 @@ class WalletKernel {
     }
   }
 
-  Future<void> _handleIncomingApprove(Map<String, dynamic> data) async {
+  Future<void> _handleIncomingApprove(Map<String, dynamic> data, {String? fromPeer}) async {
     final txId = data["txId"] as String?;
     final approver = data["approver"] as String?;
     final approverPublicKey = data["approverPublicKey"] as String?;
     final signature = data["signature"] as String?;
 
-    if (txId == null || approver == null || approverPublicKey == null || signature == null) return;
+    if (txId == null || approver == null || approverPublicKey == null || signature == null) {
+      if (fromPeer != null) sybil.decreaseTrust(fromPeer);
+      return;
+    }
     if (approver == identity.nodeId) return;
 
     final approvalKey = "$txId:$approver";
     if (_seenApprovals.contains(approvalKey)) return;
-    _seenApprovals.add(approvalKey);
+    _rememberApproval(approvalKey);
 
     if (!await _verifyApprovalSignature(txId, approver, approverPublicKey, signature)) {
       Logger.warn("Vote d'approbation rejeté : signature invalide de $approver");
+      // Un pair qui relaie/fabrique un vote signé invalide (usurpation
+      // tentée) est traité aussi sévèrement qu'une tx à signature cassée.
+      if (fromPeer != null) {
+        sybil.decreaseTrust(fromPeer);
+        sybil.decreaseTrust(fromPeer);
+      }
       return;
     }
 
@@ -284,27 +365,53 @@ class WalletKernel {
     p2p.sendToPeer(peerId, {"type": "sync_request", "from": identity.nodeId});
   }
 
-  Future<void> _handleSyncResponse(Map<String, dynamic> data) async {
+  /// Un pair honnête ne renvoie que SON propre historique connu ; au-delà
+  /// de ce plafond, une réponse de sync n'est plus une resynchronisation
+  /// légitime mais une tentative de saturer le CPU/la mémoire du
+  /// destinataire avec un seul message géant.
+  static const int _maxTxsPerSyncResponse = 20000;
+
+  Future<void> _handleSyncResponse(Map<String, dynamic> data, {String? fromPeer}) async {
     final txs = data["txs"] as List?;
     if (txs == null) return;
 
+    if (txs.length > _maxTxsPerSyncResponse) {
+      Logger.warn("sync_response anormalement volumineux (${txs.length}) ignoré");
+      if (fromPeer != null) sybil.decreaseTrust(fromPeer);
+      return;
+    }
+
+    var invalidCount = 0;
     for (final item in txs) {
       late final Transaction tx;
       try {
         tx = Transaction.fromJson(Map<String, dynamic>.from(item));
       } catch (e) {
         Logger.warn("Tx de sync malformée ignorée : $e");
+        invalidCount++;
         continue;
       }
 
-      if (!_txValidator.validate(tx)) continue;
-      if (!await _verifySignature(tx)) continue;
+      if (!_txValidator.validate(tx)) {
+        invalidCount++;
+        continue;
+      }
+      if (!await _verifySignature(tx)) {
+        invalidCount++;
+        continue;
+      }
 
       final result = dag.restoreFinalized(tx);
       if (result == DagAcceptResult.accepted) {
         _creditIfFinalizedHere(tx);
         await txRepo.save(tx);
       }
+    }
+
+    // Beaucoup d'entrées invalides dans un seul batch = pair qui teste
+    // délibérément des tx forgées en masse, pas une erreur isolée.
+    if (fromPeer != null && invalidCount > 50) {
+      sybil.decreaseTrust(fromPeer);
     }
   }
 

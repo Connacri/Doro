@@ -17,6 +17,7 @@ import 'peer_manager.dart';
 import '../kernels/market/market_kernel.dart';
 import '../storage/repositories/order_repository.dart';
 import '../storage/repositories/trade_repository.dart';
+import '../security/sybil_protection.dart';
 
 class P2PNode {
   final String nodeId;
@@ -43,9 +44,24 @@ class P2PNode {
   late final OrderRepository orderRepo;
   late final TradeRepository tradeRepo;
 
+  /// Une seule instance partagée entre la couche connexion (`PeerManager`)
+  /// et la couche wallet (`WalletKernel`) — un pair pénalisé pour avoir
+  /// envoyé une tx forgée doit aussi être bloqué au niveau connexion, et
+  /// inversement. Deux instances séparées créeraient deux "vérités" sur la
+  /// confiance d'un même pair, l'une pouvant l'autoriser pendant que
+  /// l'autre le bannit.
+  final SybilProtection sybil = SybilProtection();
+
+  /// Limite le nombre d'offres WebRTC entrantes traitées par pair et par
+  /// seconde — sans ça, un pair (ou un faux pair usurpant plusieurs
+  /// `nodeId`) peut saturer le CPU de négociation ICE en boucle.
+  final Map<String, DateTime> _lastOfferAt = {};
+  final Map<String, int> _offerCountThisWindow = {};
+  static const int _maxOffersPerSecond = 3;
+
   P2PNode(this.identity, ObjectBoxStore db) : nodeId = identity.nodeId {
     p2p = WebRTCNetworkEngine(nodeId);
-    peerManager = PeerManager(db, engine: p2p);
+    peerManager = PeerManager(db, engine: p2p, sybil: sybil);
     health = NetworkHealth();
 
     p2p.onChannelOpen = (peerId) {
@@ -73,6 +89,7 @@ class P2PNode {
       wallet: walletCore,
       txRepo: txRepo,
       p2p: p2p,
+      sybil: sybil,
     );
 
     messengerKernel = MessengerKernel(
@@ -148,8 +165,28 @@ class P2PNode {
     }
   }
 
+  bool _admitOffer(String peerId) {
+    final now = DateTime.now();
+    final last = _lastOfferAt[peerId];
+    if (last == null || now.difference(last).inSeconds >= 1) {
+      _lastOfferAt[peerId] = now;
+      _offerCountThisWindow[peerId] = 0;
+    }
+    final count = (_offerCountThisWindow[peerId] ?? 0) + 1;
+    _offerCountThisWindow[peerId] = count;
+    if (count > _maxOffersPerSecond) {
+      sybil.decreaseTrust(peerId);
+      return false;
+    }
+    return true;
+  }
+
   Future<void> _handleOffer(String peerId, dynamic sdp) async {
     if (peerManager.isBlocked(peerId)) return;
+    if (!_admitOffer(peerId)) {
+      Logger.warn("Offres WebRTC anormalement fréquentes de $peerId — ignorées");
+      return;
+    }
     final answer = await p2p.acceptConnection(peerId, sdp);
     if (answer != null && _signaling != null) {
       _signaling!.send({
