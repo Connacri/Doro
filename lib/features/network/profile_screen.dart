@@ -136,30 +136,58 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 children: [
                   Row(
                     children: [
-                      const Text("Wallet(s)", style: TextStyle(fontWeight: FontWeight.bold)),
+                      const Icon(Icons.account_balance_wallet, size: 20),
+                      const SizedBox(width: 8),
+                      const Text("Wallet(s)", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
                       const Spacer(),
                       IconButton(
-                        icon: const Icon(Icons.key, size: 18),
+                        icon: const Icon(Icons.key, size: 20),
                         tooltip: "Importer un wallet",
                         onPressed: () => _importWallet(context),
                       ),
                     ],
                   ),
+                  const SizedBox(height: 8),
                   if (wallets.isEmpty)
-                    const Padding(padding: EdgeInsets.symmetric(vertical: 8), child: Text("Aucun wallet", style: TextStyle(color: Colors.grey)))
+                    const Padding(padding: EdgeInsets.symmetric(vertical: 16), child: Center(child: Text("Aucun wallet", style: TextStyle(color: Colors.grey))))
                   else
                     ...wallets.map((w) {
                       final isGenesis = Genesis.isGenesisAddress(w.address);
-                      return Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 4),
-                        child: Row(
+                      return Container(
+                        margin: const EdgeInsets.only(bottom: 8),
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: isGenesis ? Colors.amber.withValues(alpha: 0.08) : Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
+                          borderRadius: BorderRadius.circular(12),
+                          border: isGenesis ? Border.all(color: Colors.amber.withValues(alpha: 0.3)) : null,
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Icon(isGenesis ? Icons.stars : Icons.account_balance_wallet, size: 16, color: isGenesis ? Colors.amber : null),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: Text(w.address, style: const TextStyle(fontFamily: 'monospace', fontSize: 11), overflow: TextOverflow.ellipsis),
+                            Row(
+                              children: [
+                                Icon(isGenesis ? Icons.stars : Icons.account_balance_wallet, size: 16, color: isGenesis ? Colors.amber : null),
+                                const SizedBox(width: 6),
+                                Expanded(
+                                  child: Text(w.address, style: const TextStyle(fontFamily: 'monospace', fontSize: 12), overflow: TextOverflow.ellipsis),
+                                ),
+                                if (isGenesis)
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                    decoration: BoxDecoration(color: Colors.amber.withValues(alpha: 0.2), borderRadius: BorderRadius.circular(8)),
+                                    child: const Text("Fondateur", style: TextStyle(fontSize: 10, color: Colors.amber)),
+                                  ),
+                              ],
                             ),
-                            Text(formatDoro(w.balance), style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: isGenesis ? Colors.amber[800] : null)),
+                            const SizedBox(height: 8),
+                            Text(
+                              formatDoro(w.balance),
+                              style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                                color: isGenesis ? Colors.amber[800] : null,
+                              ),
+                            ),
                           ],
                         ),
                       );
