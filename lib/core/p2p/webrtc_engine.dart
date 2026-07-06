@@ -9,6 +9,9 @@ class WebRTCNetworkEngine {
   final Map<String, PeerConnection> _connections = {};
   final Map<String, Peer> peers = {};
 
+  // Buffer for ICE candidates that arrive before the connection is established
+  final Map<String, List<Map<String, dynamic>>> _iceBuffer = {};
+
   final _messageController = StreamController<({String from, dynamic data})>.broadcast();
   Stream<({String from, dynamic data})> get messages => _messageController.stream;
 
@@ -25,24 +28,17 @@ class WebRTCNetworkEngine {
     if (isNew) onPeerConnected?.call(peer.id);
   }
 
-  /// N'ajoute `peerId` à `peers` (donc à la liste "connecté" vue par
-  /// l'UI, et à ce qui rend `sendToPeer`/`broadcast` réellement capables
-  /// de livrer) que lorsque le canal de données WebRTC est VRAIMENT
-  /// ouvert — jamais dès l'échange SDP offer/answer. Avant ce correctif,
-  /// le côté qui ACCEPTAIT une offre était marqué "connecté"
-  /// immédiatement (avant même la négociation ICE), tandis que le côté
-  /// qui ENVOYAIT l'offre n'était jamais ajouté à cette liste du tout —
-  /// ni l'un ni l'autre ne reflétait la réalité, ce qui donnait
-  /// l'impression trompeuse qu'un pair "découvert" était joignable alors
-  /// que rien ne pouvait réellement transiter tant que ICE n'avait pas
-  /// abouti.
   void _registerOnceChannelOpen(String peerId) {
     registerPeer(Peer(id: peerId, address: "", lastSeen: DateTime.now()));
   }
 
   Future<Map<String, dynamic>?> createOffer(String peerId) async {
     if (_connections.containsKey(peerId)) return null;
+
+    Logger.info("WebRTC: Creating offer for $peerId");
     final conn = PeerConnection();
+    _connections[peerId] = conn; // Register early to handle incoming ICE
+
     await conn.init();
 
     conn.onMessage = (msg) {
@@ -62,19 +58,33 @@ class WebRTCNetworkEngine {
 
     await conn.createChannel();
     final offer = await conn.createOffer();
-    _connections[peerId] = conn;
+
+    // Flush buffered ICE candidates
+    _flushIceBuffer(peerId);
+
     return offer;
   }
 
   Future<void> handleAnswer(String peerId, dynamic sdp) async {
     final conn = _connections[peerId];
-    if (conn == null) return;
+    if (conn == null) {
+      Logger.warn("WebRTC: Received answer from unknown peer $peerId");
+      return;
+    }
     await conn.setRemoteDescription(sdp);
+    _flushIceBuffer(peerId);
   }
 
   Future<Map<String, dynamic>?> acceptConnection(String peerId, dynamic sdp) async {
-    if (_connections.containsKey(peerId)) return null;
+    if (_connections.containsKey(peerId)) {
+       // If negotiation is already in progress, don't overwrite
+       if (_connections[peerId]!.isOpen) return null;
+    }
+
+    Logger.info("WebRTC: Accepting connection from $peerId");
     final conn = PeerConnection();
+    _connections[peerId] = conn; // Register early
+
     await conn.init();
 
     conn.onMessage = (msg) {
@@ -94,33 +104,54 @@ class WebRTCNetworkEngine {
 
     await conn.setRemoteDescription(sdp);
     final answer = await conn.createAnswer();
-    _connections[peerId] = conn;
+
+    // Flush buffered ICE candidates
+    _flushIceBuffer(peerId);
+
     return answer;
   }
 
   Future<void> handleIce(String peerId, dynamic candidate) async {
     final conn = _connections[peerId];
-    if (conn == null) return;
-    await conn.addIceCandidate(candidate);
+    if (conn == null) {
+      // Buffer ICE candidate if connection not yet created
+      Logger.info("WebRTC: Buffering ICE candidate for $peerId");
+      _iceBuffer.putIfAbsent(peerId, () => []).add(Map<String, dynamic>.from(candidate));
+      return;
+    }
+
+    try {
+       await conn.addIceCandidate(candidate);
+    } catch (e) {
+       Logger.warn("WebRTC: Failed to add ICE candidate for $peerId: $e");
+       // Buffer it anyway if it failed (maybe too early)
+       _iceBuffer.putIfAbsent(peerId, () => []).add(Map<String, dynamic>.from(candidate));
+    }
   }
 
-  /// Retourne `true` si le message a réellement été envoyé sur le canal
-  /// WebRTC de ce pair, `false` sinon (pair inconnu ou canal pas encore
-  /// ouvert). Ne JAMAIS ignorer cette valeur côté appelant — un `false`
-  /// veut dire que le message est perdu si personne ne le renvoie.
+  void _flushIceBuffer(String peerId) {
+    final buffered = _iceBuffer.remove(peerId);
+    if (buffered != null && buffered.isNotEmpty) {
+      Logger.info("WebRTC: Flushing ${buffered.length} buffered ICE candidates for $peerId");
+      final conn = _connections[peerId];
+      if (conn != null) {
+        for (final cand in buffered) {
+          conn.addIceCandidate(cand).catchError((e) {
+             Logger.warn("WebRTC: Error flushing ICE candidate: $e");
+          });
+        }
+      }
+    }
+  }
+
   bool sendToPeer(String peerId, Map<String, dynamic> data) {
     final conn = _connections[peerId];
     if (conn == null) return false;
     return conn.send(jsonEncode(data));
   }
 
-  /// Une connexion (en cours ou établie) existe-t-elle déjà pour ce pair ?
-  /// Évite les doubles connexions quand les deux pairs s'initient
-  /// simultanément.
   bool isConnectedTo(String peerId) => _connections.containsKey(peerId);
 
-  /// Le canal de données vers ce pair est-il actuellement ouvert et prêt
-  /// à transmettre (par opposition à "en cours de négociation ICE").
   bool isPeerChannelOpen(String peerId) => _connections[peerId]?.isOpen ?? false;
 
   void broadcast(Map<String, dynamic> data) {
@@ -131,8 +162,10 @@ class WebRTCNetworkEngine {
   }
 
   void removePeer(String peerId) {
+    Logger.info("WebRTC: Removing peer $peerId");
     _connections[peerId]?.close();
     _connections.remove(peerId);
+    _iceBuffer.remove(peerId);
     final existed = peers.remove(peerId) != null;
     if (existed) onPeerDisconnected?.call(peerId);
   }
@@ -142,6 +175,7 @@ class WebRTCNetworkEngine {
       await conn.close();
     }
     _connections.clear();
+    _iceBuffer.clear();
     peers.clear();
     await _messageController.close();
   }
