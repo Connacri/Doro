@@ -38,6 +38,13 @@ class P2PNode {
   final _channelReadyController = StreamController<String>.broadcast();
   Stream<String> get onChannelReady => _channelReadyController.stream;
 
+  /// Émis quand le serveur de signaling renvoie une erreur (pair
+  /// introuvable, timeout, etc.) — l'UI peut afficher un message à
+  /// l'utilisateur plutôt que de laisser croire que la demande est
+  /// partie.
+  final _signalingErrorController = StreamController<String>.broadcast();
+  Stream<String> get signalingErrors => _signalingErrorController.stream;
+
   bool isSignalingConnected = false;
   Timer? _healthTimer;
 
@@ -67,6 +74,8 @@ class P2PNode {
   /// pour la même paire, ce qui crée deux `PeerConnection` dont l'une
   /// écrase l'autre dans le map — canaux instables, messages perdus.
   final Set<String> _pendingConnections = {};
+  final Map<String, Timer> _connectionTimers = {};
+  static const Duration _connectionTimeout = Duration(seconds: 30);
 
   P2PNode(this.identity, ObjectBoxStore db) : nodeId = identity.nodeId {
     p2p = WebRTCNetworkEngine(nodeId);
@@ -86,6 +95,8 @@ class P2PNode {
       // demander — comportement symétrique : il fera de même pour moi
       // dès que SON canal vers moi s'ouvre de son côté.
       profileKernel.announceTo(peerId);
+      _connectionTimers[peerId]?.cancel();
+      _connectionTimers.remove(peerId);
       _channelReadyController.add(peerId);
       _networkChangeController.add(null);
     };
@@ -190,6 +201,14 @@ class P2PNode {
       case "ice":
         p2p.handleIce(msg["from"], msg["candidate"]);
         break;
+      case "registered":
+        Logger.info("Signaling registration confirmed");
+        break;
+      case "error":
+        final errorMsg = msg["message"] as String? ?? "Erreur signaling inconnue";
+        Logger.error("Signaling error: $errorMsg");
+        _signalingErrorController.add(errorMsg);
+        break;
       case "peer_list":
         final peers = List<String>.from(msg["peers"] ?? []);
         for (final pid in peers) {
@@ -262,6 +281,16 @@ class P2PNode {
     if (p2p.isConnectedTo(peerId)) return;
 
     _pendingConnections.add(peerId);
+    _connectionTimers[peerId]?.cancel();
+    _connectionTimers[peerId] = Timer(_connectionTimeout, () {
+      if (!p2p.isConnectedTo(peerId) && !p2p.peers.containsKey(peerId)) {
+        Logger.warn("Connection to $peerId timed out after ${_connectionTimeout.inSeconds}s");
+        _signalingErrorController.add("Connexion vers $peerId expirée (30s)");
+        _pendingConnections.remove(peerId);
+        _connectionTimers.remove(peerId);
+        p2p.removePeer(peerId);
+      }
+    });
     try {
       final offer = await p2p.createOffer(peerId);
       if (offer != null && _signaling != null) {
@@ -303,6 +332,8 @@ class P2PNode {
 
   void stop() {
     _healthTimer?.cancel();
+    for (final t in _connectionTimers.values) { t.cancel(); }
+    _connectionTimers.clear();
     p2p.dispose();
     _signaling?.close();
     walletKernel.dispose();
@@ -310,6 +341,7 @@ class P2PNode {
     profileKernel.dispose();
     _networkChangeController.close();
     _channelReadyController.close();
+    _signalingErrorController.close();
     marketKernel.dispose();
   }
 

@@ -52,7 +52,17 @@ class AmisScreen extends StatelessWidget {
     if (result == "qr") {
       final scanned = await Navigator.push<String>(context, MaterialPageRoute(builder: (_) => const QrScanScreen()));
       if (scanned != null && scanned.trim().isNotEmpty) {
-        await chat.sendFriendRequest(scanned.trim());
+        try {
+          await chat.sendFriendRequest(scanned.trim());
+        } catch (e) {
+          if (context.mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+              content: Text(e.toString()),
+              backgroundColor: Colors.red.shade800,
+            ));
+          }
+          return;
+        }
         if (context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Demande d'ami envoyée")));
         }
@@ -82,7 +92,17 @@ class AmisScreen extends StatelessWidget {
                 final key = controller.text.trim();
                 Navigator.pop(ctx);
                 if (key.isNotEmpty) {
-                  await chat.sendFriendRequest(key, name: nameController.text.trim().isEmpty ? null : nameController.text.trim());
+                  try {
+                    await chat.sendFriendRequest(key, name: nameController.text.trim().isEmpty ? null : nameController.text.trim());
+                  } catch (e) {
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                        content: Text(e.toString()),
+                        backgroundColor: Colors.red.shade800,
+                      ));
+                    }
+                    return;
+                  }
                   if (context.mounted) {
                     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Demande d'ami envoyée")));
                   }

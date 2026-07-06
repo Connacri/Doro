@@ -39,6 +39,9 @@ class ChatProvider extends ChangeNotifier {
   StreamSubscription<void>? _networkSub;
   StreamSubscription<String>? _channelSub;
   StreamSubscription<void>? _friendSub;
+  StreamSubscription<String>? _sigErrSub;
+
+  String? lastSignalingError;
 
   ChatProvider(this.node, this.contactRepo, {this.walletProvider}) {
     _sub = node.messages.listen((msg) {
@@ -67,6 +70,11 @@ class ChatProvider extends ChangeNotifier {
     });
 
     _networkSub = node.networkChanges.listen((_) {
+      if (hasListeners) notifyListeners();
+    });
+
+    _sigErrSub = node.signalingErrors.listen((err) {
+      lastSignalingError = err;
       if (hasListeners) notifyListeners();
     });
   }
@@ -124,21 +132,26 @@ class ChatProvider extends ChangeNotifier {
 
   // ---------------- Amis : actions ----------------
 
-  Future<void> sendFriendRequest(String publicKey, {String? name}) async {
+  /// Retourne `true` si la tentative de connexion a réussi (pair en
+  /// ligne et canal ouvert), `false` si le pair n'est pas joignable
+  /// pour l'instant (la demande partira dès qu'il reviendra en ligne).
+  /// Lance une exception si une condition bloquante empêche l'envoi
+  /// (signaling non connecté, etc.).
+  Future<bool> sendFriendRequest(String publicKey, {String? name}) async {
     final key = publicKey.trim();
-    if (key.isEmpty || key == node.nodeId) return;
+    if (key.isEmpty || key == node.nodeId) return false;
     await node.sendFriendRequest(key, name: name);
-    if (!isOnline(key)) {
-      // Pair pas encore connu du réseau local (ex: on vient de scanner
-      // son QR) — sans ça, la demande resterait en file d'attente sans
-      // jamais tenter la connexion WebRTC qui permettrait de la livrer.
-      try {
-        await node.connectPeer(key);
-      } catch (_) {
-        // Pas grave si hors ligne pour l'instant — la demande partira
-        // dès que le canal s'ouvrira (voir MessengerKernel._outbox).
-      }
-    }
+    if (isOnline(key)) return true;
+
+    await node.connectPeer(key);
+    notifyListeners();
+    return p2pChannelOpen(key);
+  }
+
+  bool p2pChannelOpen(String peerId) => node.p2p.isPeerChannelOpen(peerId);
+
+  void clearSignalingError() {
+    lastSignalingError = null;
     notifyListeners();
   }
 
@@ -222,6 +235,7 @@ class ChatProvider extends ChangeNotifier {
     _networkSub?.cancel();
     _channelSub?.cancel();
     _friendSub?.cancel();
+    _sigErrSub?.cancel();
     super.dispose();
   }
 }
