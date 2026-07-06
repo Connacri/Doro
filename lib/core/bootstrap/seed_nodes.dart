@@ -4,6 +4,7 @@ class SeedNodes {
   static const List<String> nodes = [
     "wss://volte-dhyr.onrender.com",
     "wss://doro-1.onrender.com",
+    "wss://doro-2.onrender.com",
   ];
 
   static List<String> getAll() => nodes;
