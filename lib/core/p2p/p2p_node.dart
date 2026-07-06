@@ -1,36 +1,45 @@
+// lib/core/p2p/p2p_node.dart
 import 'dart:async';
-import '../kernels/wallet/wallet_kernel.dart';
-import '../kernels/messenger/messenger_kernel.dart';
-import '../dag/dag_engine.dart';
-import '../dag/transaction_model.dart';
-import '../consensus/consensus_engine.dart';
-import '../wallet/wallet_core.dart';
-import '../network/network_health.dart';
+import 'dart:math';
 import '../storage/objectbox/store.dart';
 import '../storage/repositories/tx_repository.dart';
-import '../utils/logger.dart';
-import '../utils/node_identity.dart';
-import 'webrtc_engine.dart';
-import 'signaling_client.dart';
-import 'peer_manager.dart';
-import '../kernels/market/market_kernel.dart';
-import '../kernels/profile/profile_kernel.dart';
 import '../storage/repositories/order_repository.dart';
 import '../storage/repositories/trade_repository.dart';
 import '../storage/repositories/profile_repository.dart';
+import '../utils/logger.dart';
+import '../utils/node_identity.dart';
+import '../dag/dag_engine.dart';
+import '../consensus/consensus_engine.dart';
+import '../wallet/wallet_core.dart';
 import '../security/sybil_protection.dart';
+import '../kernels/wallet/wallet_kernel.dart';
+import '../kernels/messenger/messenger_kernel.dart';
+import '../kernels/profile/profile_kernel.dart';
+import '../kernels/market/market_kernel.dart';
+import '../dag/transaction_model.dart';
+import '../network/network_health.dart';
+import 'webrtc_engine.dart';
+import 'peer_manager.dart';
+import 'signaling_client.dart';
 
 class P2PNode {
+  final NodeIdentity identity;
   final String nodeId;
-  final NodeIdentityKeyPair identity;
-
   late final WebRTCNetworkEngine p2p;
-  SignalingClient? _signaling;
   late final PeerManager peerManager;
   late final NetworkHealth health;
-
   late final WalletKernel walletKernel;
   late final MessengerKernel messengerKernel;
+  late final ProfileKernel profileKernel;
+  late final MarketKernel marketKernel;
+  late final ProfileRepository profileRepo;
+  late final OrderRepository orderRepo;
+  late final TradeRepository tradeRepo;
+
+  final SybilProtection sybil = SybilProtection();
+
+  SignalingClient? _signaling;
+  bool isSignalingConnected = false;
 
   final _networkChangeController = StreamController<void>.broadcast();
   Stream<void> get networkChanges => _networkChangeController.stream;
@@ -38,41 +47,14 @@ class P2PNode {
   final _channelReadyController = StreamController<String>.broadcast();
   Stream<String> get onChannelReady => _channelReadyController.stream;
 
-  /// Émis quand le serveur de signaling renvoie une erreur (pair
-  /// introuvable, timeout, etc.) — l'UI peut afficher un message à
-  /// l'utilisateur plutôt que de laisser croire que la demande est
-  /// partie.
   final _signalingErrorController = StreamController<String>.broadcast();
   Stream<String> get signalingErrors => _signalingErrorController.stream;
 
-  bool isSignalingConnected = false;
   Timer? _healthTimer;
-
-  late final MarketKernel marketKernel;
-  late final ProfileKernel profileKernel;
-  late final ProfileRepository profileRepo;
-  late final OrderRepository orderRepo;
-  late final TradeRepository tradeRepo;
-
-  /// Une seule instance partagée entre la couche connexion (`PeerManager`)
-  /// et la couche wallet (`WalletKernel`) — un pair pénalisé pour avoir
-  /// envoyé une tx forgée doit aussi être bloqué au niveau connexion, et
-  /// inversement. Deux instances séparées créeraient deux "vérités" sur la
-  /// confiance d'un même pair, l'une pouvant l'autoriser pendant que
-  /// l'autre le bannit.
-  final SybilProtection sybil = SybilProtection();
-
-  /// Limite le nombre d'offres WebRTC entrantes traitées par pair et par
-  /// seconde — sans ça, un pair (ou un faux pair usurpant plusieurs
-  /// `nodeId`) peut saturer le CPU de négociation ICE en boucle.
   final Map<String, DateTime> _lastOfferAt = {};
   final Map<String, int> _offerCountThisWindow = {};
   static const int _maxOffersPerSecond = 3;
 
-  /// Évite la double connexion : quand les deux pairs reçoivent
-  /// `peer_list` simultanément, chacun tente d'initier ET de répondre
-  /// pour la même paire, ce qui crée deux `PeerConnection` dont l'une
-  /// écrase l'autre dans le map — canaux instables, messages perdus.
   final Set<String> _pendingConnections = {};
   final Map<String, Timer> _connectionTimers = {};
   static const Duration _connectionTimeout = Duration(seconds: 30);
@@ -83,17 +65,9 @@ class P2PNode {
     health = NetworkHealth();
 
     p2p.onChannelOpen = (peerId) {
-      // Le canal vient de s'ouvrir : tout message de chat/invitation qui
-      // attendait ce pair précisément peut maintenant partir pour de
-      // vrai (voir MessengerKernel._outbox).
+      Logger.info("P2PNode: Data channel open with $peerId");
       messengerKernel.onPeerChannelOpen(peerId);
-      // Récupère l'historique de transactions de ce pair — sans ça, mon
-      // solde local le concernant reste incomplet (voir WalletKernel.
-      // requestSync) et je peux rejeter à tort un paiement légitime.
       walletKernel.requestSync(peerId);
-      // Lui envoie mon profil (nom/bio/photo) sans qu'il ait à le
-      // demander — comportement symétrique : il fera de même pour moi
-      // dès que SON canal vers moi s'ouvre de son côté.
       profileKernel.announceTo(peerId);
       _connectionTimers[peerId]?.cancel();
       _connectionTimers.remove(peerId);
@@ -151,12 +125,15 @@ class P2PNode {
       _signaling!.onConnect = () {
         isSignalingConnected = true;
         _signaling!.send({"type": "register", "id": nodeId});
-        Logger.info("Registered on signaling server (${_signaling!.url})");
+        Logger.info("Signaling connected, registering...");
         _networkChangeController.add(null);
+      };
+      _signaling!.onRegistrationConfirmed = (id) {
+        Logger.info("Signaling registration confirmed for $id");
       };
       _signaling!.onDisconnect = () {
         isSignalingConnected = false;
-        Logger.warn("Signaling déconnecté — isSignalingConnected=false");
+        Logger.warn("Signaling disconnected");
         _networkChangeController.add(null);
       };
       _signaling!.onMessage = (msg) {
@@ -164,10 +141,6 @@ class P2PNode {
         _handleSignal(msg);
       };
 
-      // Relaie les candidats ICE entre pairs via le serveur de signaling
-      // — sans ça, le SDP offre/réponse est échangé mais les chemins
-      // réseau ne peuvent pas être découverts, et le data channel ne
-      // s'ouvre jamais (messages en file d'attente indéfiniment).
       p2p.onIceCandidate = (peerId, candidate) {
         _signaling?.send({
           "type": "ice",
@@ -213,18 +186,12 @@ class P2PNode {
         break;
       case "peer_list":
         final peers = List<String>.from(msg["peers"] ?? []);
-        Logger.info("peer_list reçu (${peers.length} pairs enregistrés sur le signaling)");
+        Logger.info("peer_list reçu (${peers.length} pairs)");
         for (final pid in peers) {
           if (pid != nodeId && !p2p.peers.containsKey(pid)) {
-            // Tie-break par ID : seul le pair avec l'ID le plus grand
-            // initie la connexion, l'autre attend l'offre entrante.
-            // Sans ça, les deux s'envoient une offre simultanément et
-            // aucun n'envoie de réponse → deadlock, messages perdus.
             if (nodeId.compareTo(pid) > 0) {
-              Logger.info("Tie-break: je connecte $pid (mon id est plus grand)");
+              Logger.info("Tie-break: Connecting to $pid");
               connectToPeer(pid);
-            } else {
-              Logger.info("Tie-break: j'attends l'offre entrante de $pid (son id est plus grand)");
             }
           }
         }
@@ -250,19 +217,10 @@ class P2PNode {
 
   Future<void> _handleOffer(String peerId, dynamic sdp) async {
     if (peerManager.isBlocked(peerId)) return;
-    if (!_admitOffer(peerId)) {
-      Logger.warn("Offres WebRTC anormalement fréquentes de $peerId — ignorées");
-      return;
-    }
-    // Connexion déjà établie (notre offre a été acceptée plus tôt) :
-    // on ignore l'offre entrante.
+    if (!_admitOffer(peerId)) return;
     if (p2p.isConnectedTo(peerId)) return;
 
-    // On avait aussi initié une connexion (tie-break ou race), on
-    // abandonne notre tentative : on accepte l'offre entrante plutôt
-    // que de laisser les deux envois d'offre sans réponse.
     _pendingConnections.remove(peerId);
-
     _pendingConnections.add(peerId);
     try {
       final answer = await p2p.acceptConnection(peerId, sdp);
@@ -275,33 +233,22 @@ class P2PNode {
         });
       }
       peerManager.markNegotiating(peerId);
-      health.ping(peerId);
     } finally {
       _pendingConnections.remove(peerId);
     }
   }
 
   Future<void> connectToPeer(String peerId) async {
-    if (peerManager.isBlocked(peerId)) {
-      Logger.warn("connectToPeer($peerId): pair bloqué (sybil/peerManager) — abandon");
-      return;
-    }
-    if (_pendingConnections.contains(peerId)) {
-      Logger.info("connectToPeer($peerId): connexion déjà en cours — abandon");
-      return;
-    }
-    if (p2p.isConnectedTo(peerId)) {
-      Logger.info("connectToPeer($peerId): connexion déjà existante — abandon");
-      return;
-    }
+    if (peerManager.isBlocked(peerId)) return;
+    if (_pendingConnections.contains(peerId)) return;
+    if (p2p.isConnectedTo(peerId)) return;
 
-    Logger.info("connectToPeer($peerId): création de l'offer WebRTC (isSignalingConnected=$isSignalingConnected)");
+    Logger.info("Connecting to peer $peerId...");
     _pendingConnections.add(peerId);
     _connectionTimers[peerId]?.cancel();
     _connectionTimers[peerId] = Timer(_connectionTimeout, () {
-      if (!p2p.isConnectedTo(peerId) && !p2p.peers.containsKey(peerId)) {
-        Logger.warn("Connection to $peerId timed out after ${_connectionTimeout.inSeconds}s");
-        _signalingErrorController.add("Connexion vers $peerId expirée (30s)");
+      if (!p2p.isPeerChannelOpen(peerId)) {
+        Logger.warn("Connection to $peerId timed out");
         _pendingConnections.remove(peerId);
         _connectionTimers.remove(peerId);
         p2p.removePeer(peerId);
@@ -309,22 +256,15 @@ class P2PNode {
     });
     try {
       final offer = await p2p.createOffer(peerId);
-      if (offer == null) {
-        Logger.warn("connectToPeer($peerId): createOffer a retourné null (connexion déjà en cours ?)");
-        return;
+      if (offer != null && _signaling != null) {
+        _signaling!.send({
+          "type": "offer",
+          "to": peerId,
+          "from": nodeId,
+          "sdp": offer,
+        });
+        peerManager.markNegotiating(peerId);
       }
-      if (_signaling == null) {
-        Logger.error("connectToPeer($peerId): aucun SignalingClient configuré — offer non envoyée");
-        return;
-      }
-      _signaling!.send({
-        "type": "offer",
-        "to": peerId,
-        "from": nodeId,
-        "sdp": offer,
-      });
-      Logger.info("connectToPeer($peerId): offer envoyée via ${_signaling!.url}");
-      peerManager.markNegotiating(peerId);
     } finally {
       _pendingConnections.remove(peerId);
     }
@@ -333,13 +273,9 @@ class P2PNode {
   Future<void> connectPeer(String addr) async {
     final peerId = addr.trim();
     if (peerId.isEmpty || peerId == nodeId) return;
-    if (p2p.peers.containsKey(peerId)) {
-      Logger.info("connectPeer($peerId): déjà connecté, rien à faire");
-      return;
-    }
+    if (p2p.isPeerChannelOpen(peerId)) return;
     if (_signaling == null || !isSignalingConnected) {
-      Logger.error("connectPeer($peerId): signaling non connecté (isSignalingConnected=$isSignalingConnected) — abandon");
-      throw StateError("Non connecté au serveur de signaling");
+       throw StateError("Signaling not connected");
     }
     await connectToPeer(peerId);
   }
@@ -374,9 +310,7 @@ class P2PNode {
 
   void reconnectSignaling() {
     if (_signaling == null) return;
-    Logger.info("reconnectSignaling: isSignalingConnected=$isSignalingConnected, url=${_signaling!.url}");
     if (!isSignalingConnected) {
-      Logger.info("Signaling disconnected — forcing immediate reconnection");
       _signaling!.retryNow();
     }
   }

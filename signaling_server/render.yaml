@@ -6,7 +6,7 @@ services:
     plan: free
     buildCommand: npm install
     startCommand: node server.js
-    healthCheckPath: /
+    healthCheckPath: /health
     envVars:
       - key: PORT
         value: 10000
