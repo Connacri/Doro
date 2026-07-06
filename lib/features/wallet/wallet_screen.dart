@@ -175,18 +175,8 @@ class _WalletScreenState extends State<WalletScreen> {
           IconButton(icon: const Icon(Icons.key), tooltip: "Importer un wallet", onPressed: () => _importWallet(context)),
         ],
       ),
-      floatingActionButton: provider.wallets.isNotEmpty
-          ? FloatingActionButton.extended(
-              onPressed: () async {
-                final result = await context.read<WalletProvider>().createWallet();
-                if (context.mounted) {
-                  await _showBackupDialog(context, result.seedHex, auto: false);
-                }
-              },
-              icon: const Icon(Icons.add),
-              label: const Text("Créer un wallet"),
-            )
-          : null,
+      // Pas de FAB : le premier wallet est créé automatiquement au
+      // 1er lancement. L'import d'une seed existante se fait via 🔑.
       body: SafeArea(
         child: ListView(
           children: [

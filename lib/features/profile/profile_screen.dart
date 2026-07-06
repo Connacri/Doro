@@ -1,6 +1,5 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 
 import 'profile_provider.dart';
@@ -37,39 +36,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
     _bioCtrl.text = provider.mine?.bio ?? "";
   }
 
-  Future<void> _choosePhotoSource(BuildContext context) async {
-    final source = await showModalBottomSheet<ImageSource>(
-      context: context,
-      builder: (ctx) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              leading: const Icon(Icons.photo_library),
-              title: const Text("Choisir depuis la galerie"),
-              onTap: () => Navigator.of(ctx).pop(ImageSource.gallery),
-            ),
-            ListTile(
-              leading: const Icon(Icons.photo_camera),
-              title: const Text("Prendre une photo"),
-              onTap: () => Navigator.of(ctx).pop(ImageSource.camera),
-            ),
-            if (context.read<ProfileProvider>().mine?.photoPath.isNotEmpty ?? false)
-              ListTile(
-                leading: const Icon(Icons.delete_outline, color: Colors.redAccent),
-                title: const Text("Supprimer la photo", style: TextStyle(color: Colors.redAccent)),
-                onTap: () => Navigator.of(ctx).pop(),
-              ),
-          ],
-        ),
-      ),
-    );
-    if (!context.mounted || source == null) return;
-
+  Future<void> _pickPhoto() async {
     try {
-      await context.read<ProfileProvider>().pickAndSetPhoto(source);
+      await context.read<ProfileProvider>().pickPhoto();
     } catch (e) {
-      if (!context.mounted) return;
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text("Impossible de mettre à jour la photo : $e")),
       );
@@ -113,7 +84,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     bottom: 0,
                     right: 0,
                     child: InkWell(
-                      onTap: () => _choosePhotoSource(context),
+                      onTap: _pickPhoto,
                       borderRadius: BorderRadius.circular(20),
                       child: Container(
                         padding: const EdgeInsets.all(8),
@@ -129,11 +100,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ),
             ),
             const SizedBox(height: 8),
-            Center(
-              child: TextButton(
-                onPressed: () => _choosePhotoSource(context),
-                child: const Text("Changer la photo"),
-              ),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                TextButton(onPressed: _pickPhoto, child: const Text("Changer la photo")),
+                if (hasPhoto)
+                  TextButton(
+                    onPressed: () => context.read<ProfileProvider>().removePhoto(),
+                    child: const Text("Supprimer", style: TextStyle(color: Colors.redAccent)),
+                  ),
+              ],
             ),
             const SizedBox(height: 16),
             TextField(

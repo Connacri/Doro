@@ -1,0 +1,305 @@
+diff --git a/lib/core/p2p/p2p_node.dart b/lib/core/p2p/p2p_node.dart
+index 94dd0e6..72268bc 100644
+--- a/lib/core/p2p/p2p_node.dart
++++ b/lib/core/p2p/p2p_node.dart
+@@ -10,13 +10,15 @@ import '../storage/objectbox/store.dart';
+ import '../storage/repositories/tx_repository.dart';
+ import '../utils/logger.dart';
+ import '../utils/node_identity.dart';
+-import 'peer_model.dart';
+ import 'webrtc_engine.dart';
+ import 'signaling_client.dart';
+ import 'peer_manager.dart';
+ import '../kernels/market/market_kernel.dart';
+ import '../storage/repositories/order_repository.dart';
+ import '../storage/repositories/trade_repository.dart';
++import '../security/sybil_protection.dart';
++import '../kernels/profile/profile_kernel.dart';
++import '../storage/repositories/profile_repository.dart';
+ 
+ class P2PNode {
+   final String nodeId;
+@@ -43,9 +45,27 @@ class P2PNode {
+   late final OrderRepository orderRepo;
+   late final TradeRepository tradeRepo;
+ 
++  late final ProfileKernel profileKernel;
++  late final ProfileRepository profileRepo;
++
++  /// Une seule instance partagée entre la couche connexion (`PeerManager`)
++  /// et la couche wallet (`WalletKernel`) — un pair pénalisé pour avoir
++  /// envoyé une tx forgée doit aussi être bloqué au niveau connexion, et
++  /// inversement. Deux instances séparées créeraient deux "vérités" sur la
++  /// confiance d'un même pair, l'une pouvant l'autoriser pendant que
++  /// l'autre le bannit.
++  final SybilProtection sybil = SybilProtection();
++
++  /// Limite le nombre d'offres WebRTC entrantes traitées par pair et par
++  /// seconde — sans ça, un pair (ou un faux pair usurpant plusieurs
++  /// `nodeId`) peut saturer le CPU de négociation ICE en boucle.
++  final Map<String, DateTime> _lastOfferAt = {};
++  final Map<String, int> _offerCountThisWindow = {};
++  static const int _maxOffersPerSecond = 3;
++
+   P2PNode(this.identity, ObjectBoxStore db) : nodeId = identity.nodeId {
+     p2p = WebRTCNetworkEngine(nodeId);
+-    peerManager = PeerManager(db, engine: p2p);
++    peerManager = PeerManager(db, engine: p2p, sybil: sybil);
+     health = NetworkHealth();
+ 
+     p2p.onChannelOpen = (peerId) {
+@@ -57,6 +77,10 @@ class P2PNode {
+       // solde local le concernant reste incomplet (voir WalletKernel.
+       // requestSync) et je peux rejeter à tort un paiement légitime.
+       walletKernel.requestSync(peerId);
++      // Lui envoie mon profil (nom/bio/photo) sans qu'il ait à le
++      // demander — comportement symétrique : il fera de même pour moi
++      // dès que SON canal vers moi s'ouvre de son côté.
++      profileKernel.announceTo(peerId);
+       _channelReadyController.add(peerId);
+       _networkChangeController.add(null);
+     };
+@@ -73,6 +97,15 @@ class P2PNode {
+       wallet: walletCore,
+       txRepo: txRepo,
+       p2p: p2p,
++      sybil: sybil,
++    );
++
++    profileRepo = ProfileRepository(db);
++    profileKernel = ProfileKernel(
++      nodeId: nodeId,
++      p2p: p2p,
++      repo: profileRepo,
++      sybil: sybil,
+     );
+ 
+     messengerKernel = MessengerKernel(
+@@ -87,6 +120,7 @@ class P2PNode {
+ 
+   Stream<Map<String, dynamic>> get messages => messengerKernel.messages;
+   Stream<void> get walletChanges => walletKernel.walletChanges;
++  Stream<String> get profileChanges => profileKernel.profileChanges;
+   DagEngine get dag => walletKernel.dag;
+   WalletCore get wallet => walletKernel.wallet;
+ 
+@@ -148,8 +182,28 @@ class P2PNode {
+     }
+   }
+ 
++  bool _admitOffer(String peerId) {
++    final now = DateTime.now();
++    final last = _lastOfferAt[peerId];
++    if (last == null || now.difference(last).inSeconds >= 1) {
++      _lastOfferAt[peerId] = now;
++      _offerCountThisWindow[peerId] = 0;
++    }
++    final count = (_offerCountThisWindow[peerId] ?? 0) + 1;
++    _offerCountThisWindow[peerId] = count;
++    if (count > _maxOffersPerSecond) {
++      sybil.decreaseTrust(peerId);
++      return false;
++    }
++    return true;
++  }
++
+   Future<void> _handleOffer(String peerId, dynamic sdp) async {
+     if (peerManager.isBlocked(peerId)) return;
++    if (!_admitOffer(peerId)) {
++      Logger.warn("Offres WebRTC anormalement fréquentes de $peerId — ignorées");
++      return;
++    }
+     final answer = await p2p.acceptConnection(peerId, sdp);
+     if (answer != null && _signaling != null) {
+       _signaling!.send({
+@@ -159,7 +213,10 @@ class P2PNode {
+         "sdp": answer,
+       });
+     }
+-    peerManager.registerPeer(Peer(id: peerId, address: "", lastSeen: DateTime.now()));
++    // Ne marque PAS encore ce pair "connecté" — seul l'ouverture réelle
++    // du canal de données le fera (voir WebRTCNetworkEngine.
++    // _registerOnceChannelOpen), déclenchée par `onChannelOpen` plus haut.
++    peerManager.markNegotiating(peerId);
+     health.ping(peerId);
+   }
+ 
+@@ -173,7 +230,7 @@ class P2PNode {
+         "from": nodeId,
+         "sdp": offer,
+       });
+-      peerManager.registerPeer(Peer(id: peerId, address: "", lastSeen: DateTime.now()));
++      peerManager.markNegotiating(peerId);
+     }
+   }
+ 
+@@ -198,6 +255,7 @@ class P2PNode {
+   Future<void> cancelFriendRequest(String toPeerId) => messengerKernel.cancelFriendRequest(toPeerId);
+   void removeFriend(String publicKey) => messengerKernel.removeFriend(publicKey);
+   Future<void> selfApprove(String txId) => walletKernel.selfApprove(txId);
++  Future<void> broadcastMyProfile() => profileKernel.broadcastMine();
+ 
+   void stop() {
+     _healthTimer?.cancel();
+@@ -205,6 +263,7 @@ class P2PNode {
+     _signaling?.close();
+     walletKernel.dispose();
+     messengerKernel.dispose();
++    profileKernel.dispose();
+     _networkChangeController.close();
+     _channelReadyController.close();
+     marketKernel.dispose();
+diff --git a/lib/core/p2p/peer_connection.dart b/lib/core/p2p/peer_connection.dart
+index 6d93195..24c961d 100644
+--- a/lib/core/p2p/peer_connection.dart
++++ b/lib/core/p2p/peer_connection.dart
+@@ -35,6 +35,36 @@ class PeerConnection {
+       "iceServers": [
+         {"urls": "stun:stun.l.google.com:19302"},
+         {"urls": "stun:stun1.l.google.com:19302"},
++        // Sans serveur TURN, seuls les pairs dont le NAT permet une
++        // connexion directe (cone/restricted) réussissent — beaucoup de
++        // réseaux mobiles (4G/5G) ou d'entreprise utilisent un NAT
++        // symétrique où le STUN seul échoue systématiquement : le
++        // signaling se termine (offer/answer échangés) mais la
++        // négociation ICE reste bloquée indéfiniment en "checking", donc
++        // le canal de données n'ouvre jamais — exactement le symptôme
++        // "pair découvert mais rien ne part jamais".
++        //
++        // openrelay.metered.ca est un relais TURN public gratuit, adapté
++        // pour débloquer ce cas en développement/petite échelle. Pour la
++        // production, remplacer par un serveur TURN dédié (coturn
++        // auto-hébergé ou un fournisseur payant type Twilio/Metered) —
++        // un relais public tiers n'offre aucune garantie de disponibilité
++        // ni de confidentialité du trafic relayé.
++        {
++          "urls": "turn:openrelay.metered.ca:80",
++          "username": "openrelayproject",
++          "credential": "openrelayproject",
++        },
++        {
++          "urls": "turn:openrelay.metered.ca:443",
++          "username": "openrelayproject",
++          "credential": "openrelayproject",
++        },
++        {
++          "urls": "turn:openrelay.metered.ca:443?transport=tcp",
++          "username": "openrelayproject",
++          "credential": "openrelayproject",
++        },
+       ]
+     };
+ 
+diff --git a/lib/core/p2p/peer_manager.dart b/lib/core/p2p/peer_manager.dart
+index ed58145..2e6f353 100644
+--- a/lib/core/p2p/peer_manager.dart
++++ b/lib/core/p2p/peer_manager.dart
+@@ -18,10 +18,16 @@ class PeerManager {
+     sybil.increaseTrust(peer.id);
+   }
+ 
+-  void registerPeer(Peer peer) {
+-    if (sybil.isBlocked(peer.id)) return;
+-    engine.registerPeer(peer);
+-    sybil.increaseTrust(peer.id);
++  /// À appeler dès qu'on COMMENCE une négociation avec ce pair (offre
++  /// envoyée ou reçue) — augmente sa réputation de base sans jamais le
++  /// marquer "connecté" dans `engine.peers`. Cette dernière liste ne doit
++  /// refléter QUE des canaux de données réellement ouverts (voir
++  /// `WebRTCNetworkEngine._registerOnceChannelOpen`) ; la confondre avec
++  /// "une négociation a démarré" est ce qui causait un statut "connecté"
++  /// trompeur avant que ICE n'ait réellement abouti.
++  void markNegotiating(String peerId) {
++    if (sybil.isBlocked(peerId)) return;
++    sybil.increaseTrust(peerId);
+   }
+ 
+   void removePeer(String peerId) {
+diff --git a/lib/core/p2p/webrtc_engine.dart b/lib/core/p2p/webrtc_engine.dart
+index 4e69eca..803f839 100644
+--- a/lib/core/p2p/webrtc_engine.dart
++++ b/lib/core/p2p/webrtc_engine.dart
+@@ -25,6 +25,21 @@ class WebRTCNetworkEngine {
+     if (isNew) onPeerConnected?.call(peer.id);
+   }
+ 
++  /// N'ajoute `peerId` à `peers` (donc à la liste "connecté" vue par
++  /// l'UI, et à ce qui rend `sendToPeer`/`broadcast` réellement capables
++  /// de livrer) que lorsque le canal de données WebRTC est VRAIMENT
++  /// ouvert — jamais dès l'échange SDP offer/answer. Avant ce correctif,
++  /// le côté qui ACCEPTAIT une offre était marqué "connecté"
++  /// immédiatement (avant même la négociation ICE), tandis que le côté
++  /// qui ENVOYAIT l'offre n'était jamais ajouté à cette liste du tout —
++  /// ni l'un ni l'autre ne reflétait la réalité, ce qui donnait
++  /// l'impression trompeuse qu'un pair "découvert" était joignable alors
++  /// que rien ne pouvait réellement transiter tant que ICE n'avait pas
++  /// abouti.
++  void _registerOnceChannelOpen(String peerId) {
++    registerPeer(Peer(id: peerId, address: "", lastSeen: DateTime.now()));
++  }
++
+   Future<Map<String, dynamic>?> createOffer(String peerId) async {
+     final conn = PeerConnection();
+     await conn.init();
+@@ -39,7 +54,10 @@ class WebRTCNetworkEngine {
+     };
+     conn.onDisconnect(() => removePeer(peerId));
+     conn.onIceCandidate((candidate) => onIceCandidate?.call(peerId, candidate));
+-    conn.onChannelOpen(() => onChannelOpen?.call(peerId));
++    conn.onChannelOpen(() {
++      _registerOnceChannelOpen(peerId);
++      onChannelOpen?.call(peerId);
++    });
+ 
+     await conn.createChannel();
+     final offer = await conn.createOffer();
+@@ -67,12 +85,14 @@ class WebRTCNetworkEngine {
+     };
+     conn.onDisconnect(() => removePeer(peerId));
+     conn.onIceCandidate((candidate) => onIceCandidate?.call(peerId, candidate));
+-    conn.onChannelOpen(() => onChannelOpen?.call(peerId));
++    conn.onChannelOpen(() {
++      _registerOnceChannelOpen(peerId);
++      onChannelOpen?.call(peerId);
++    });
+ 
+     await conn.setRemoteDescription(sdp);
+     final answer = await conn.createAnswer();
+     _connections[peerId] = conn;
+-    registerPeer(Peer(id: peerId, address: "", lastSeen: DateTime.now()));
+     return answer;
+   }
+ 
+diff --git a/lib/features/wallet/wallet_provider.dart b/lib/features/wallet/wallet_provider.dart
+index 94107da..858c3b4 100644
+--- a/lib/features/wallet/wallet_provider.dart
++++ b/lib/features/wallet/wallet_provider.dart
+@@ -153,15 +153,25 @@ class WalletProvider extends ChangeNotifier {
+           signature: _bytesToHex(signature.bytes),
+         );
+ 
+-        final result = node!.dag.addValidated(genesisTx);
++        // IMPORTANT : passer par `node!.broadcastTx` (donc par
++        // `WalletKernel.broadcastTx`), PAS par `dag.addValidated` +
++        // `p2p.broadcast` séparément comme avant. Seul `WalletKernel.
++        // broadcastTx` persiste la tx dans `txRepo` — sans ça, la tx
++        // genesis n'existait qu'en mémoire : après redémarrage de l'app,
++        // `loadPersistedLedger()` ne la rejouait jamais, le DAG frais
++        // partait avec un solde à ZÉRO pour cette adresse dans
++        // `LedgerBalances` (l'autorité réelle), alors que le solde
++        // affiché à l'écran (persisté séparément via `WalletEntity`)
++        // montrait toujours 50 Md — d'où un rejet "solde insuffisant"
++        // silencieux au moindre envoi après un redémarrage.
++        final result = node!.broadcastTx(genesisTx);
+         if (result == DagAcceptResult.accepted) {
+-          node!.p2p.broadcast({"type": "tx", ...genesisTx.toJson()});
+           node!.dag.confirm(genesisTx.id, node!.nodeId);
+           core.creditIfLocal(address, Genesis.maxSupply);
+           // Vote signé par l'identité du node — jamais un "approver" en
+           // texte libre non prouvé (voir P2PNode.selfApprove).
+           await node!.selfApprove(genesisTx.id);
+-          Logger.info("Transaction genesis diffusée sur le réseau");
++          Logger.info("Transaction genesis diffusée et persistée");
+         } else {
+           Logger.warn("Transaction genesis refusée par le DAG local : $result");
+           core.debugFaucet(address, Genesis.maxSupply);

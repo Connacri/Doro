@@ -1,6 +1,6 @@
 import 'dart:io';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
-import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../../core/p2p/p2p_node.dart';
@@ -12,7 +12,6 @@ import '../../core/utils/logger.dart';
 class ProfileProvider extends ChangeNotifier {
   final ProfileRepository repo;
   final P2PNode? node;
-  final ImagePicker _picker = ImagePicker();
 
   ProfileEntity? _mine;
   ProfileEntity? get mine => _mine;
@@ -27,28 +26,20 @@ class ProfileProvider extends ChangeNotifier {
 
   String get myAddress => node?.nodeId ?? "";
 
-  /// Choisit une image (galerie ou caméra), la redimensionne/compresse
-  /// DIRECTEMENT via `image_picker` (pas besoin d'une lib de traitement
-  /// d'image séparée) — une miniature 512x512 à qualité 70 tient
-  /// largement sous la limite de diffusion réseau (`ProfileKernel.
-  /// _maxPhotoBase64Chars`), contrairement à une photo brute de
-  /// smartphone qui peut faire plusieurs Mo.
-  Future<void> pickAndSetPhoto(ImageSource source) async {
-    final XFile? picked = await _picker.pickImage(
-      source: source,
-      maxWidth: 512,
-      maxHeight: 512,
-      imageQuality: 70,
+  Future<void> pickPhoto() async {
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.image,
+      allowMultiple: false,
     );
-    if (picked == null) return;
+    if (result == null || result.files.isEmpty) return;
+
+    final picked = result.files.first;
+    if (picked.path == null) return;
 
     try {
       final docsDir = await getApplicationDocumentsDirectory();
-      // Nom de fichier FIXE (pas d'horodatage) : une nouvelle photo
-      // remplace toujours l'ancienne au même endroit, pas d'accumulation
-      // de vieux fichiers orphelins sur le disque au fil des changements.
       final destPath = "${docsDir.path}/profile_photo.jpg";
-      final bytes = await picked.readAsBytes();
+      final bytes = await File(picked.path!).readAsBytes();
       await File(destPath).writeAsBytes(bytes, flush: true);
 
       final profile = repo.getOrCreateMine();
