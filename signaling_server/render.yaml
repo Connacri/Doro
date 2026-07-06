@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: doro-signaling
+    env: node
+    region: frankfurt
+    plan: free
+    buildCommand: npm install
+    startCommand: node server.js
+    healthCheckPath: /
+    envVars:
+      - key: PORT
+        value: 10000
