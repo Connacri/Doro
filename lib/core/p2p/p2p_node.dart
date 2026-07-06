@@ -141,21 +141,22 @@ class P2PNode {
   DagEngine get dag => walletKernel.dag;
   WalletCore get wallet => walletKernel.wallet;
 
-  Future<void> start({String? signalingUrl}) async {
+  Future<void> start({List<String>? signalingUrls}) async {
     await walletKernel.loadPersistedLedger();
     await messengerKernel.friendRequests.load();
     Logger.info("Starting P2P node: $nodeId");
 
-    if (signalingUrl != null) {
-      _signaling = SignalingClient(signalingUrl);
+    if (signalingUrls != null && signalingUrls.isNotEmpty) {
+      _signaling = SignalingClient(signalingUrls);
       _signaling!.onConnect = () {
         isSignalingConnected = true;
         _signaling!.send({"type": "register", "id": nodeId});
-        Logger.info("Registered on signaling server");
+        Logger.info("Registered on signaling server (${_signaling!.url})");
         _networkChangeController.add(null);
       };
       _signaling!.onDisconnect = () {
         isSignalingConnected = false;
+        Logger.warn("Signaling déconnecté — isSignalingConnected=false");
         _networkChangeController.add(null);
       };
       _signaling!.onMessage = (msg) {
@@ -205,12 +206,14 @@ class P2PNode {
         Logger.info("Signaling registration confirmed");
         break;
       case "error":
+        final failedPeer = msg["peerId"] as String?;
         final errorMsg = msg["message"] as String? ?? "Erreur signaling inconnue";
-        Logger.error("Signaling error: $errorMsg");
+        Logger.warn("Signaling error${failedPeer != null ? ' pour $failedPeer' : ''}: $errorMsg");
         _signalingErrorController.add(errorMsg);
         break;
       case "peer_list":
         final peers = List<String>.from(msg["peers"] ?? []);
+        Logger.info("peer_list reçu (${peers.length} pairs enregistrés sur le signaling)");
         for (final pid in peers) {
           if (pid != nodeId && !p2p.peers.containsKey(pid)) {
             // Tie-break par ID : seul le pair avec l'ID le plus grand
@@ -218,7 +221,10 @@ class P2PNode {
             // Sans ça, les deux s'envoient une offre simultanément et
             // aucun n'envoie de réponse → deadlock, messages perdus.
             if (nodeId.compareTo(pid) > 0) {
+              Logger.info("Tie-break: je connecte $pid (mon id est plus grand)");
               connectToPeer(pid);
+            } else {
+              Logger.info("Tie-break: j'attends l'offre entrante de $pid (son id est plus grand)");
             }
           }
         }
@@ -276,10 +282,20 @@ class P2PNode {
   }
 
   Future<void> connectToPeer(String peerId) async {
-    if (peerManager.isBlocked(peerId)) return;
-    if (_pendingConnections.contains(peerId)) return;
-    if (p2p.isConnectedTo(peerId)) return;
+    if (peerManager.isBlocked(peerId)) {
+      Logger.warn("connectToPeer($peerId): pair bloqué (sybil/peerManager) — abandon");
+      return;
+    }
+    if (_pendingConnections.contains(peerId)) {
+      Logger.info("connectToPeer($peerId): connexion déjà en cours — abandon");
+      return;
+    }
+    if (p2p.isConnectedTo(peerId)) {
+      Logger.info("connectToPeer($peerId): connexion déjà existante — abandon");
+      return;
+    }
 
+    Logger.info("connectToPeer($peerId): création de l'offer WebRTC (isSignalingConnected=$isSignalingConnected)");
     _pendingConnections.add(peerId);
     _connectionTimers[peerId]?.cancel();
     _connectionTimers[peerId] = Timer(_connectionTimeout, () {
@@ -293,15 +309,22 @@ class P2PNode {
     });
     try {
       final offer = await p2p.createOffer(peerId);
-      if (offer != null && _signaling != null) {
-        _signaling!.send({
-          "type": "offer",
-          "to": peerId,
-          "from": nodeId,
-          "sdp": offer,
-        });
-        peerManager.markNegotiating(peerId);
+      if (offer == null) {
+        Logger.warn("connectToPeer($peerId): createOffer a retourné null (connexion déjà en cours ?)");
+        return;
       }
+      if (_signaling == null) {
+        Logger.error("connectToPeer($peerId): aucun SignalingClient configuré — offer non envoyée");
+        return;
+      }
+      _signaling!.send({
+        "type": "offer",
+        "to": peerId,
+        "from": nodeId,
+        "sdp": offer,
+      });
+      Logger.info("connectToPeer($peerId): offer envoyée via ${_signaling!.url}");
+      peerManager.markNegotiating(peerId);
     } finally {
       _pendingConnections.remove(peerId);
     }
@@ -310,8 +333,12 @@ class P2PNode {
   Future<void> connectPeer(String addr) async {
     final peerId = addr.trim();
     if (peerId.isEmpty || peerId == nodeId) return;
-    if (p2p.peers.containsKey(peerId)) return;
+    if (p2p.peers.containsKey(peerId)) {
+      Logger.info("connectPeer($peerId): déjà connecté, rien à faire");
+      return;
+    }
     if (_signaling == null || !isSignalingConnected) {
+      Logger.error("connectPeer($peerId): signaling non connecté (isSignalingConnected=$isSignalingConnected) — abandon");
       throw StateError("Non connecté au serveur de signaling");
     }
     await connectToPeer(peerId);
@@ -347,6 +374,7 @@ class P2PNode {
 
   void reconnectSignaling() {
     if (_signaling == null) return;
+    Logger.info("reconnectSignaling: isSignalingConnected=$isSignalingConnected, url=${_signaling!.url}");
     if (!isSignalingConnected) {
       Logger.info("Signaling disconnected — forcing immediate reconnection");
       _signaling!.retryNow();

@@ -75,7 +75,7 @@ class _DoroAppState extends State<DoroApp> with WidgetsBindingObserver {
     setState(() {});
     try {
       final seeds = BootstrapService.getSeeds();
-      if (seeds.isNotEmpty) await node.start(signalingUrl: seeds.first);
+      if (seeds.isNotEmpty) await node.start(signalingUrls: seeds);
     } catch (e) {
       Logger.error("Bootstrap failed: $e");
     }

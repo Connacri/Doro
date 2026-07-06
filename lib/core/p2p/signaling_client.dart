@@ -4,7 +4,10 @@ import 'package:web_socket_channel/web_socket_channel.dart';
 import '../utils/logger.dart';
 
 class SignalingClient {
-  final String url;
+  final List<String> urls;
+  int _urlIndex = 0;
+  String get url => urls[_urlIndex];
+
   WebSocketChannel? _channel;
   StreamSubscription? _subscription;
   bool _isClosed = false;
@@ -16,14 +19,14 @@ class SignalingClient {
   Function()? onConnect;
   Function()? onDisconnect;
 
-  SignalingClient(this.url) {
+  SignalingClient(this.urls) : assert(urls.isNotEmpty, "SignalingClient nécessite au moins une URL") {
     _connect();
   }
 
   void _connect() {
     if (_isClosed) return;
 
-    Logger.info("Connecting to signaling server: $url");
+    Logger.info("Connecting to signaling server ($_urlIndex/${urls.length - 1}): $url");
     try {
       _channel = WebSocketChannel.connect(Uri.parse(url));
 
@@ -72,7 +75,9 @@ class SignalingClient {
     _subscription?.cancel();
     _channel?.sink.close();
 
-    Logger.info("Reconnecting to signaling server in 5 seconds...");
+    _urlIndex = (_urlIndex + 1) % urls.length;
+
+    Logger.info("Reconnecting to signaling server ($url) in 5 seconds...");
     _reconnectTimer = Timer(const Duration(seconds: 5), _connect);
   }
 
