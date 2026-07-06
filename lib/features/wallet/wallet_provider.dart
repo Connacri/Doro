@@ -23,6 +23,8 @@ class WalletProvider extends ChangeNotifier {
   final CryptoService _crypto = CryptoService();
   StreamSubscription<void>? _walletSub;
   bool _initialized = false;
+  bool _loaded = false;
+  bool get isLoaded => _loaded;
 /// Seed à faire sauvegarder à l'utilisateur juste après une création
   /// automatique (1er lancement). Tant que ce n'est pas acquitté via
   /// clearPendingBackup(), l'UI DOIT bloquer avec le dialogue de backup.
@@ -48,6 +50,7 @@ class WalletProvider extends ChangeNotifier {
       Logger.error("Erreur init wallet: $e");
     }
 
+    _loaded = true;
     notifyListeners();
   }
 

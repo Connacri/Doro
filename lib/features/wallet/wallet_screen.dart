@@ -140,14 +140,14 @@ class _WalletScreenState extends State<WalletScreen> {
     final provider = context.watch<WalletProvider>();
     final ledger = context.watch<LedgerProvider>();
 
-    if (provider.wallets.isEmpty && !_backupPromptShown) {
+    if (provider.isLoaded && provider.wallets.isEmpty && !_backupPromptShown) {
       _backupPromptShown = true;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (context.mounted) _autoCreateFirstWallet(context);
       });
     }
 
-    if (!_backupPromptShown && provider.pendingBackupSeed != null) {
+    if (provider.isLoaded && !_backupPromptShown && provider.pendingBackupSeed != null) {
       _backupPromptShown = true;
       final seed = provider.pendingBackupSeed!;
       WidgetsBinding.instance.addPostFrameCallback((_) async {
