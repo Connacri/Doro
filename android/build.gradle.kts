@@ -16,10 +16,6 @@ subprojects {
     project.layout.buildDirectory.value(newSubprojectBuildDir)
 }
 subprojects {
-    project.evaluationDependsOn(":app")
-}
-
-subprojects {
     plugins.withId("com.android.library") {
         val ext = project.extensions.findByType(com.android.build.api.dsl.LibraryExtension::class.java)
         ext?.compileSdk = 36
@@ -28,6 +24,10 @@ subprojects {
         val ext = project.extensions.findByType(com.android.build.api.dsl.ApplicationExtension::class.java)
         ext?.compileSdk = 36
     }
+}
+
+subprojects {
+    project.evaluationDependsOn(":app")
 }
 
 tasks.register<Delete>("clean") {
