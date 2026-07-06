@@ -247,7 +247,20 @@ class P2PNode {
     _connectionTimers[peerId]?.cancel();
     _connectionTimers[peerId] = Timer(_connectionTimeout, () {
       if (!p2p.isPeerChannelOpen(peerId)) {
-        Logger.warn("Connection to $peerId timed out");
+        Logger.warn("Connection to $peerId timed out after ${_connectionTimeout.inSeconds}s "
+            "(isSignalingConnected=$isSignalingConnected) — offer/answer/ice ont pu être "
+            "échangés mais le data channel WebRTC ne s'est jamais ouvert (NAT/TURN à vérifier). "
+            "Tout message en attente pour ce pair (demande d'ami, chat) reste en file "
+            "d'attente et repartira automatiquement à la prochaine connexion réussie.");
+        // Régression corrigée : ce timeout supprimait le pair en silence total, sans
+        // jamais prévenir l'UI. La demande d'ami envoyée pendant ce laps de temps
+        // restait bloquée dans MessengerKernel._outbox sans qu'aucun message
+        // n'explique pourquoi — d'où "invitation jamais reçue" sans la moindre erreur.
+        _signalingErrorController.add(
+          "Connexion vers ${peerId.length > 12 ? '${peerId.substring(0, 8)}…' : peerId} "
+          "expirée après ${_connectionTimeout.inSeconds}s — le pair est probablement sur un "
+          "autre réseau et injoignable directement.",
+        );
         _pendingConnections.remove(peerId);
         _connectionTimers.remove(peerId);
         p2p.removePeer(peerId);

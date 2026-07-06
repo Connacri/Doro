@@ -15,8 +15,51 @@ import '../profile/peer_profile_screen.dart';
 /// - Demandes envoyées (annuler)
 /// - Mes amis (discuter/supprimer)
 /// Ajout via QR code (scanner l'ID d'un pair) ou clé publique collée.
-class AmisScreen extends StatelessWidget {
+class AmisScreen extends StatefulWidget {
   const AmisScreen({super.key});
+
+  @override
+  State<AmisScreen> createState() => _AmisScreenState();
+}
+
+class _AmisScreenState extends State<AmisScreen> {
+  ChatProvider? _chatProvider;
+  String? _lastShownError;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _chatProvider?.removeListener(_onChatProviderChange);
+    _chatProvider = context.read<ChatProvider>();
+    _chatProvider!.addListener(_onChatProviderChange);
+  }
+
+  @override
+  void dispose() {
+    _chatProvider?.removeListener(_onChatProviderChange);
+    super.dispose();
+  }
+
+  /// `lastSignalingError` (timeout 30s, "peer not found" du serveur, etc.)
+  /// était déjà calculé côté ChatProvider mais jamais affiché : l'échec
+  /// restait invisible et l'utilisateur croyait sa demande partie. On
+  /// affiche ici un vrai message dès qu'une nouvelle erreur apparaît,
+  /// puis on la "consomme" (clearSignalingError) pour ne pas la
+  /// réafficher en boucle à chaque notifyListeners() suivant.
+  void _onChatProviderChange() {
+    final error = _chatProvider?.lastSignalingError;
+    if (error != null && error != _lastShownError && mounted) {
+      _lastShownError = error;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(error),
+          backgroundColor: Colors.red.shade800,
+          duration: const Duration(seconds: 6),
+        ),
+      );
+      _chatProvider?.clearSignalingError();
+    }
+  }
 
   Future<void> _addFriend(BuildContext context) async {
     final chat = context.read<ChatProvider>();

@@ -194,8 +194,21 @@ class MessengerKernel {
   void _sendOrQueue(String toPeerId, Map<String, dynamic> data) {
     final delivered = p2p.sendToPeer(toPeerId, data);
     if (!delivered) {
+      final queue = _outbox.putIfAbsent(toPeerId, () => []);
+      // Si l'utilisateur relance une demande d'ami après un échec de
+      // connexion (timeout), l'ancienne demande restait déjà en file
+      // d'attente — sans ce garde-fou, on empilait un doublon à chaque
+      // nouvelle tentative, et les deux repartaient d'un coup dès que
+      // le pair devenait enfin joignable.
+      final type = data['type'];
+      final alreadyQueued = (type == 'friend_request' || type == 'friend_accept') &&
+          queue.any((m) => m['type'] == type);
+      if (alreadyQueued) {
+        Logger.info("MessengerKernel: $type déjà en file pour $toPeerId — pas de doublon");
+        return;
+      }
       Logger.info("MessengerKernel: Peer $toPeerId not ready, queuing message (type: ${data['type']})");
-      _outbox.putIfAbsent(toPeerId, () => []).add(data);
+      queue.add(data);
     } else {
       Logger.info("MessengerKernel: Message delivered to $toPeerId (type: ${data['type']})");
     }
