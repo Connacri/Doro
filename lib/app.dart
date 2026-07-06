@@ -10,7 +10,7 @@ import 'features/chat/chats_screen.dart';
 import 'features/chat/chat_provider.dart';
 import 'features/ledger/ledger_provider.dart';
 import 'features/network/network_provider.dart';
-import 'features/network/network_screen.dart';
+import 'features/network/profile_screen.dart';
 
 import 'core/storage/objectbox/store.dart';
 import 'core/storage/repositories/wallet_repository.dart';
@@ -133,7 +133,7 @@ class _RootState extends State<Root> {
         HomeScreen(),
         WalletScreen(),
         ChatsScreen(),
-        NetworkScreen(),
+        ProfileScreen(),
       ]),
       bottomNavigationBar: NavigationBar(
         selectedIndex: index,
@@ -145,7 +145,7 @@ class _RootState extends State<Root> {
             icon: Badge(isLabelVisible: pendingRequests > 0, label: Text("$pendingRequests"), child: const Icon(Icons.chat_bubble_outline)),
             label: "Discussions",
           ),
-          NavigationDestination(icon: Icon(Icons.wifi, color: net.isConnected ? Colors.green : Colors.grey), label: "Network"),
+          NavigationDestination(icon: Icon(Icons.person, color: net.isConnected ? Colors.green : Colors.grey), label: "Profil"),
         ],
       ),
     );

@@ -87,11 +87,41 @@ class ChatsScreen extends StatelessWidget {
                     maxLines: 1, overflow: TextOverflow.ellipsis,
                     style: TextStyle(color: c.unread > 0 ? null : Colors.grey, fontWeight: c.unread > 0 ? FontWeight.w600 : FontWeight.normal),
                   ),
-                  trailing: Column(crossAxisAlignment: CrossAxisAlignment.end, mainAxisSize: MainAxisSize.min, children: [
-                    Text(_formatTime(c.lastTime), style: const TextStyle(fontSize: 11, color: Colors.grey)),
-                    if (c.unread > 0) Padding(
-                      padding: const EdgeInsets.only(top: 4),
-                      child: CircleAvatar(radius: 9, backgroundColor: Theme.of(context).colorScheme.primary, child: Text("${c.unread}", style: const TextStyle(fontSize: 10, color: Colors.white))),
+                  trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+                    Column(crossAxisAlignment: CrossAxisAlignment.end, mainAxisSize: MainAxisSize.min, children: [
+                      Text(_formatTime(c.lastTime), style: const TextStyle(fontSize: 11, color: Colors.grey)),
+                      if (c.unread > 0) Padding(
+                        padding: const EdgeInsets.only(top: 4),
+                        child: CircleAvatar(radius: 9, backgroundColor: Theme.of(context).colorScheme.primary, child: Text("${c.unread}", style: const TextStyle(fontSize: 10, color: Colors.white))),
+                      ),
+                    ]),
+                    PopupMenuButton<String>(
+                      icon: const Icon(Icons.more_vert, size: 18),
+                      onSelected: (v) {
+                        if (v == "delete") {
+                          showDialog(
+                            context: context,
+                            builder: (ctx) => AlertDialog(
+                              title: const Text("Supprimer la discussion ?"),
+                              content: Text("Tout l'historique avec ${c.name} sera effacé."),
+                              actions: [
+                                TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("Annuler")),
+                                FilledButton(
+                                  style: FilledButton.styleFrom(backgroundColor: Colors.redAccent),
+                                  onPressed: () {
+                                    Navigator.pop(ctx);
+                                    context.read<ChatProvider>().clearHistory(c.peerId);
+                                  },
+                                  child: const Text("Supprimer"),
+                                ),
+                              ],
+                            ),
+                          );
+                        }
+                      },
+                      itemBuilder: (_) => [
+                        const PopupMenuItem(value: "delete", child: Row(children: [Icon(Icons.delete_outline, size: 18, color: Colors.redAccent), SizedBox(width: 8), Text("Supprimer")])),
+                      ],
                     ),
                   ]),
                   onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => ChatScreen(peerId: c.peerId, peerName: c.name))),
