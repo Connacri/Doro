@@ -10,11 +10,21 @@ import '../../core/wallet/genesis.dart';
 import '../../core/wallet/token_config.dart';
 import '../../core/dag/transaction_model.dart';
 
-String formatDoro(BigInt atomicBalance) {
+String formatDoro(BigInt atomicBalance, {bool compact = true}) {
   const decimals = 18;
   final divisor = BigInt.from(10).pow(decimals);
   final whole = atomicBalance ~/ divisor;
   final fraction = (atomicBalance % divisor).toString().padLeft(decimals, '0').substring(0, 6);
+
+  if (compact && whole >= BigInt.from(1000000000)) {
+    final b = whole.toDouble() / 1000000000;
+    return "${b.toStringAsFixed(2)}B ${TokenConfig.symbol}";
+  }
+  if (compact && whole >= BigInt.from(1000000)) {
+    final m = whole.toDouble() / 1000000;
+    return "${m.toStringAsFixed(2)}M ${TokenConfig.symbol}";
+  }
+
   final wholeStr = whole.toString().replaceAllMapped(RegExp(r'\B(?=(\d{3})+(?!\d))'), (m) => ' ');
   return "$wholeStr.$fraction ${TokenConfig.symbol}";
 }
