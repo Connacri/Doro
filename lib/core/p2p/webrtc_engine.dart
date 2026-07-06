@@ -25,6 +25,21 @@ class WebRTCNetworkEngine {
     if (isNew) onPeerConnected?.call(peer.id);
   }
 
+  /// N'ajoute `peerId` à `peers` (donc à la liste "connecté" vue par
+  /// l'UI, et à ce qui rend `sendToPeer`/`broadcast` réellement capables
+  /// de livrer) que lorsque le canal de données WebRTC est VRAIMENT
+  /// ouvert — jamais dès l'échange SDP offer/answer. Avant ce correctif,
+  /// le côté qui ACCEPTAIT une offre était marqué "connecté"
+  /// immédiatement (avant même la négociation ICE), tandis que le côté
+  /// qui ENVOYAIT l'offre n'était jamais ajouté à cette liste du tout —
+  /// ni l'un ni l'autre ne reflétait la réalité, ce qui donnait
+  /// l'impression trompeuse qu'un pair "découvert" était joignable alors
+  /// que rien ne pouvait réellement transiter tant que ICE n'avait pas
+  /// abouti.
+  void _registerOnceChannelOpen(String peerId) {
+    registerPeer(Peer(id: peerId, address: "", lastSeen: DateTime.now()));
+  }
+
   Future<Map<String, dynamic>?> createOffer(String peerId) async {
     if (_connections.containsKey(peerId)) return null;
     final conn = PeerConnection();
@@ -40,7 +55,10 @@ class WebRTCNetworkEngine {
     };
     conn.onDisconnect(() => removePeer(peerId));
     conn.onIceCandidate((candidate) => onIceCandidate?.call(peerId, candidate));
-    conn.onChannelOpen(() => onChannelOpen?.call(peerId));
+    conn.onChannelOpen(() {
+      _registerOnceChannelOpen(peerId);
+      onChannelOpen?.call(peerId);
+    });
 
     await conn.createChannel();
     final offer = await conn.createOffer();
@@ -69,12 +87,14 @@ class WebRTCNetworkEngine {
     };
     conn.onDisconnect(() => removePeer(peerId));
     conn.onIceCandidate((candidate) => onIceCandidate?.call(peerId, candidate));
-    conn.onChannelOpen(() => onChannelOpen?.call(peerId));
+    conn.onChannelOpen(() {
+      _registerOnceChannelOpen(peerId);
+      onChannelOpen?.call(peerId);
+    });
 
     await conn.setRemoteDescription(sdp);
     final answer = await conn.createAnswer();
     _connections[peerId] = conn;
-    registerPeer(Peer(id: peerId, address: "", lastSeen: DateTime.now()));
     return answer;
   }
 

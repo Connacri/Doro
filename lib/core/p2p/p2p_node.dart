@@ -10,7 +10,6 @@ import '../storage/objectbox/store.dart';
 import '../storage/repositories/tx_repository.dart';
 import '../utils/logger.dart';
 import '../utils/node_identity.dart';
-import 'peer_model.dart';
 import 'webrtc_engine.dart';
 import 'signaling_client.dart';
 import 'peer_manager.dart';
@@ -250,7 +249,7 @@ class P2PNode {
           "sdp": answer,
         });
       }
-      peerManager.registerPeer(Peer(id: peerId, address: "", lastSeen: DateTime.now()));
+      peerManager.markNegotiating(peerId);
       health.ping(peerId);
     } finally {
       _pendingConnections.remove(peerId);
@@ -272,7 +271,7 @@ class P2PNode {
           "from": nodeId,
           "sdp": offer,
         });
-        peerManager.registerPeer(Peer(id: peerId, address: "", lastSeen: DateTime.now()));
+        peerManager.markNegotiating(peerId);
       }
     } finally {
       _pendingConnections.remove(peerId);

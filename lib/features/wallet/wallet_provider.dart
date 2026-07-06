@@ -156,15 +156,25 @@ class WalletProvider extends ChangeNotifier {
           signature: _bytesToHex(signature.bytes),
         );
 
-        final result = node!.dag.addValidated(genesisTx);
+        // IMPORTANT : passer par `node!.broadcastTx` (donc par
+        // `WalletKernel.broadcastTx`), PAS par `dag.addValidated` +
+        // `p2p.broadcast` séparément. Seul `WalletKernel.
+        // broadcastTx` persiste la tx dans `txRepo` — sans ça, la tx
+        // genesis n'existait qu'en mémoire : après redémarrage de l'app,
+        // `loadPersistedLedger()` ne la rejouait jamais, le DAG frais
+        // partait avec un solde à ZÉRO pour cette adresse dans
+        // `LedgerBalances` (l'autorité réelle), alors que le solde
+        // affiché à l'écran (persisté séparément via `WalletEntity`)
+        // montrait toujours 50 Md — d'où un rejet "solde insuffisant"
+        // silencieux au moindre envoi après un redémarrage.
+        final result = node!.broadcastTx(genesisTx);
         if (result == DagAcceptResult.accepted) {
-          node!.p2p.broadcast({"type": "tx", ...genesisTx.toJson()});
           node!.dag.confirm(genesisTx.id, node!.nodeId);
           core.creditIfLocal(address, Genesis.maxSupply);
           // Vote signé par l'identité du node — jamais un "approver" en
           // texte libre non prouvé (voir P2PNode.selfApprove).
           await node!.selfApprove(genesisTx.id);
-          Logger.info("Transaction genesis diffusée sur le réseau");
+          Logger.info("Transaction genesis diffusée et persistée");
         } else {
           Logger.warn("Transaction genesis refusée par le DAG local : $result");
           core.debugFaucet(address, Genesis.maxSupply);
