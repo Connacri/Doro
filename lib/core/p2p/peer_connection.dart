@@ -78,7 +78,48 @@ class PeerConnection {
       }
     };
   }
-
+  // Future<void> init() async {
+  //   final config = {
+  //     "iceServers": [
+  //       {"urls": "stun:stun.l.google.com:19302"},
+  //       {"urls": "stun:stun1.l.google.com:19302"},
+  //       {
+  //         "urls": "turn:openrelay.metered.ca:443",
+  //         "username": "openrelayproject",
+  //         "credential": "openrelayproject",
+  //       },
+  //       {
+  //         "urls": "turn:openrelay.metered.ca:443?transport=tcp",
+  //         "username": "openrelayproject",
+  //         "credential": "openrelayproject",
+  //       },
+  //     ]
+  //   };
+  //
+  //   try {
+  //     _pc = await createPeerConnection(config);
+  //
+  //     _pc!.onDataChannel = (channel) {
+  //       _wireChannel(channel);
+  //     };
+  //
+  //     _pc!.onIceCandidate = (candidate) {
+  //       // Version sécurisée si _onIceCandidate attend une Map
+  //       _onIceCandidate?.call(candidate.toMap());
+  //     };
+  //
+  //     _pc!.onIceConnectionState = (state) {
+  //       if (state == RTCIceConnectionState.RTCIceConnectionStateDisconnected ||
+  //           state == RTCIceConnectionState.RTCIceConnectionStateFailed ||
+  //           state == RTCIceConnectionState.RTCIceConnectionStateClosed) {
+  //         _onDisconnect?.call();
+  //       }
+  //     };
+  //   } catch (e) {
+  //     print("Erreur lors de l'initialisation WebRTC : $e");
+  //     // Gérer l'erreur d'initialisation ici
+  //   }
+  // }
   void Function(Map<String, dynamic>)? _onIceCandidate;
   void onIceCandidate(void Function(Map<String, dynamic>) cb) {
     _onIceCandidate = cb;

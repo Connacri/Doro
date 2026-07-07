@@ -18,20 +18,37 @@ class _ChatScreenState extends State<ChatScreen> {
   final controller = TextEditingController();
   final scrollCtrl = ScrollController();
   late ChatProvider _chatProvider;
+  String? _lastShownError;
 
   @override
   void initState() {
     super.initState();
     _chatProvider = context.read<ChatProvider>();
+    _chatProvider.addListener(_onProviderChange);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) _chatProvider.setActivePeer(widget.peerId);
     });
+  }
+
+  /// Affiche `lastSignalingError` (ex: tentative de reconnexion échouée
+  /// vers ce pair) au lieu de le laisser invisible — voir le correctif
+  /// dans `ChatProvider.send()`.
+  void _onProviderChange() {
+    final error = _chatProvider.lastSignalingError;
+    if (error != null && error != _lastShownError && mounted) {
+      _lastShownError = error;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(error), backgroundColor: Colors.red.shade800, duration: const Duration(seconds: 5)),
+      );
+      _chatProvider.clearSignalingError();
+    }
   }
 
   @override
   void dispose() {
     controller.dispose();
     scrollCtrl.dispose();
+    _chatProvider.removeListener(_onProviderChange);
     _chatProvider.setActivePeer(null);
     super.dispose();
   }
@@ -39,17 +56,30 @@ class _ChatScreenState extends State<ChatScreen> {
   void _send() {
     final text = controller.text;
     if (text.trim().isEmpty) return;
+    final wasOffline = !_chatProvider.isOnline(widget.peerId);
     try {
-      context.read<ChatProvider>().send(widget.peerId, text);
+      _chatProvider.send(widget.peerId, text);
       controller.clear();
+      if (wasOffline && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Pair hors ligne — message en attente, tentative de reconnexion en cours…"), duration: Duration(seconds: 3)),
+        );
+      }
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (scrollCtrl.hasClients) {
           scrollCtrl.animateTo(scrollCtrl.position.maxScrollExtent,
               duration: const Duration(milliseconds: 200), curve: Curves.easeOut);
         }
       });
-    } catch (_) {
-      // Échec silencieux — l'utilisateur peut réessayer
+    } catch (e) {
+      // Ce catch ne devrait plus jamais rester muet : toute erreur réelle
+      // ici est désormais visible pour l'utilisateur au lieu d'être
+      // avalée en silence.
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("Échec de l'envoi : $e"), backgroundColor: Colors.red.shade800),
+        );
+      }
     }
   }
 

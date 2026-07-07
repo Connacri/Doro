@@ -196,6 +196,23 @@ class ChatProvider extends ChangeNotifier {
       // Ne devrait plus arriver : MessengerKernel met le message en
       // file d'attente au lieu de le perdre si le pair est hors ligne.
     }
+    // BUG corrigé : un ami "accepté" et présent dans la liste ne veut PAS
+    // dire qu'un canal WebRTC est ouvert vers lui maintenant (redémarrage
+    // de l'app, pair déconnecté depuis, etc.). Avant ce correctif,
+    // ouvrir le chat et taper un message le mettait juste en file
+    // d'attente indéfiniment (`MessengerKernel._outbox`) SANS JAMAIS
+    // relancer de tentative de connexion — le message ne partait donc
+    // jamais tant que le pair ne se reconnectait pas de son côté par
+    // hasard. On tente maintenant une reconnexion à chaque envoi vers un
+    // pair hors ligne, pour donner une vraie chance au message d'être
+    // délivré (il partira automatiquement dès l'ouverture du canal, la
+    // logique de flush de l'outbox existe déjà).
+    if (!isOnline(peerId)) {
+      node.connectPeer(peerId).catchError((e) {
+        lastSignalingError = "Impossible de joindre ce pair : $e";
+        notifyListeners();
+      });
+    }
   }
 
   Future<bool> sendCrypto(String toAddress, BigInt amount) async {
