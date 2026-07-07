@@ -201,7 +201,7 @@ class ChatProvider extends ChangeNotifier {
   Future<bool> sendCrypto(String toAddress, BigInt amount) async {
     if (walletProvider == null || walletProvider!.wallets.isEmpty) return false;
     final txId = await walletProvider!.send(
-      from: walletProvider!.wallets.first.address,
+      from: walletProvider!.wallets.last.address,
       to: toAddress,
       amount: amount,
     );

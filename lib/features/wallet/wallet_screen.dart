@@ -166,7 +166,7 @@ class _WalletScreenState extends State<WalletScreen> {
       });
     }
 
-    final myAddress = provider.wallets.isNotEmpty ? provider.wallets.first.address : null;
+    final myAddresses = provider.wallets.map((w) => w.address).toSet();
 
     return Scaffold(
       appBar: AppBar(
@@ -243,7 +243,7 @@ class _WalletScreenState extends State<WalletScreen> {
                 final linkedSend = ledger.dag.ledger[tx.linkedSendId];
                 counterparty = linkedSend?.from ?? tx.from;
               } else {
-                isSent = tx.from == myAddress;
+                isSent = myAddresses.contains(tx.from);
                 counterparty = isSent ? tx.to : tx.from;
               }
               return ListTile(

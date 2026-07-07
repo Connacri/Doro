@@ -50,7 +50,7 @@ class MarketProvider extends ChangeNotifier {
       notifyListeners();
       return null;
     }
-    final wallet = walletProvider!.wallets.first;
+    final wallet = walletProvider!.wallets.last;
     final keyPair = await KeypairStore.load(wallet.address);
     if (keyPair == null) {
       lastError = "Clé privée locale introuvable pour ce wallet.";

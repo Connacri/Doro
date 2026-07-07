@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import 'wallet_provider.dart';
 import 'wallet_screen.dart' show formatDoro;
 import '../../core/wallet/token_config.dart';
+import '../../core/wallet/wallet_model.dart';
 import '../../shared/extensions/string_ext.dart';
 
 class SendScreen extends StatefulWidget {
@@ -17,6 +18,7 @@ class _SendScreenState extends State<SendScreen> {
   final amountCtrl = TextEditingController();
   bool _sending = false;
   BigInt _remaining = BigInt.zero;
+  String? _selectedAddress;
   BigInt _balance = BigInt.zero;
 
   @override
@@ -33,9 +35,15 @@ class _SendScreenState extends State<SendScreen> {
     super.dispose();
   }
 
+  Wallet? _selectedWallet(WalletProvider provider) {
+    if (_selectedAddress == null || provider.wallets.isEmpty) return null;
+    return provider.wallets.where((w) => w.address == _selectedAddress).firstOrNull;
+  }
+
   void _updateRemaining() {
     final provider = context.read<WalletProvider>();
-    final balance = provider.wallets.isNotEmpty ? provider.wallets.first.balance : BigInt.zero;
+    final wallet = _selectedWallet(provider);
+    final balance = wallet?.balance ?? BigInt.zero;
     final amountStr = amountCtrl.text.trim();
     final humanAmount = amountStr.toLocaleDouble();
     final amount = humanAmount != null && humanAmount > 0
@@ -62,13 +70,13 @@ class _SendScreenState extends State<SendScreen> {
     final amount = BigInt.from(humanAmount * 1e18);
 
     final provider = context.read<WalletProvider>();
-    final wallets = provider.wallets;
-    if (wallets.isEmpty) return;
+    final wallet = _selectedWallet(provider);
+    if (wallet == null) return;
 
     setState(() => _sending = true);
     try {
       final txId = await provider.send(
-        from: wallets.first.address,
+        from: wallet.address,
         to: to,
         amount: amount,
       );
@@ -100,6 +108,12 @@ class _SendScreenState extends State<SendScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final provider = context.watch<WalletProvider>();
+    final wallets = provider.wallets;
+    if (_selectedAddress == null && wallets.isNotEmpty) {
+      _selectedAddress = wallets.last.address;
+    }
+    final wallet = _selectedWallet(provider);
     final overspend = _remaining < BigInt.zero;
 
     return Padding(
@@ -107,6 +121,18 @@ class _SendScreenState extends State<SendScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          if (wallets.length > 1)
+            DropdownButtonFormField<String>(
+              value: _selectedAddress,
+              decoration: const InputDecoration(labelText: "Wallet source", border: OutlineInputBorder(), isDense: true),
+              items: wallets.map((w) => DropdownMenuItem(
+                value: w.address,
+                child: Text("${w.address.substring(0, 10)}…${w.address.substring(w.address.length - 4)}  (${formatDoro(w.balance, compact: true)})",
+                    style: const TextStyle(fontFamily: 'monospace', fontSize: 12)),
+              )).toList(),
+              onChanged: (v) => setState(() => _selectedAddress = v),
+            ),
+          if (wallets.length > 1) const SizedBox(height: 8),
           Container(
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
@@ -156,7 +182,7 @@ class _SendScreenState extends State<SendScreen> {
           ),
           const SizedBox(height: 16),
           ElevatedButton(
-            onPressed: _sending || overspend ? null : _send,
+            onPressed: _sending || overspend || wallet == null ? null : _send,
             child: _sending
                 ? const SizedBox(
                     width: 20,

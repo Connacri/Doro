@@ -29,7 +29,17 @@ class NetworkProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  List<String> get peers => node.p2p.peers.keys.toList();
+  /// Liste des pairs *réellement* connectés maintenant : `p2p.peers` est déjà
+  /// une Map (clés uniques par construction, donc pas de doublon possible au
+  /// niveau structure), mais on filtre en plus sur `isPeerChannelOpen` pour
+  /// exclure tout pair resté enregistré alors que son data channel WebRTC
+  /// s'est refermé entre-temps (évite d'afficher un pair "fantôme" comme
+  /// s'il était encore joignable). Le tri par nom garde un ordre stable.
+  List<String> get peers {
+    final ids = node.p2p.peers.keys.where((id) => node.p2p.isPeerChannelOpen(id)).toSet().toList();
+    ids.sort();
+    return ids;
+  }
 
   Future<void> stop() async {
     node.stop();

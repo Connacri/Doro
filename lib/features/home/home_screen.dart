@@ -150,7 +150,8 @@ class HomeScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final wallet = context.watch<WalletProvider>();
     final market = context.watch<MarketProvider>();
-    final balance = wallet.wallets.isNotEmpty ? wallet.wallets.first.balance : BigInt.zero;
+    final totalBalance = wallet.wallets.fold<BigInt>(BigInt.zero, (sum, w) => sum + w.balance);
+    final myAddresses = wallet.wallets.map((w) => w.address).toSet();
 
     return Scaffold(
       appBar: AppBar(
@@ -185,7 +186,7 @@ class HomeScreen extends StatelessWidget {
                   children: [
                     const Text("Solde total", style: TextStyle(fontSize: 13)),
                     const SizedBox(height: 8),
-                    Text(formatDoro(balance), style: const TextStyle(fontSize: 26, fontWeight: FontWeight.bold)),
+                    Text(formatDoro(totalBalance), style: const TextStyle(fontSize: 26, fontWeight: FontWeight.bold)),
                     if (market.lastPrice != null) ...[
                       const SizedBox(height: 4),
                       Text("Dernier prix échangé : ${_fmtPrice(market.lastPrice!)}/DORO",
@@ -260,7 +261,7 @@ class HomeScreen extends StatelessWidget {
                     leading: const Icon(Icons.sell, color: Colors.redAccent),
                     title: Text("${formatDoro(o.amount)} à ${_fmtPrice(o.pricePerUnit)}/DORO"),
                     subtitle: Text("Vendeur : ${_shortId(o.makerId)}", style: const TextStyle(fontSize: 11)),
-                    trailing: o.makerId == (wallet.wallets.isNotEmpty ? wallet.wallets.first.address : "")
+                    trailing: myAddresses.contains(o.makerId)
                         ? IconButton(icon: const Icon(Icons.cancel), onPressed: () => market.cancelOrder(o))
                         : FilledButton(onPressed: () => _requestTrade(context, o), child: const Text("Acheter")),
                   )),
@@ -273,7 +274,7 @@ class HomeScreen extends StatelessWidget {
                     leading: const Icon(Icons.shopping_cart, color: Colors.greenAccent),
                     title: Text("${formatDoro(o.amount)} à ${_fmtPrice(o.pricePerUnit)}/DORO"),
                     subtitle: Text("Acheteur : ${_shortId(o.makerId)}", style: const TextStyle(fontSize: 11)),
-                    trailing: o.makerId == (wallet.wallets.isNotEmpty ? wallet.wallets.first.address : "")
+                    trailing: myAddresses.contains(o.makerId)
                         ? IconButton(icon: const Icon(Icons.cancel), onPressed: () => market.cancelOrder(o))
                         : FilledButton(onPressed: () => _requestTrade(context, o), child: const Text("Vendre")),
                   )),
