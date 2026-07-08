@@ -143,7 +143,7 @@
     },
     {
       "id": "4:5335436094303860318",
-      "lastPropertyId": "5:7218074291633077550",
+      "lastPropertyId": "6:6964547569121296147",
       "name": "ChatMessageEntity",
       "properties": [
         {
@@ -170,6 +170,11 @@
         {
           "id": "5:7218074291633077550",
           "name": "peerKey",
+          "type": 9
+        },
+        {
+          "id": "6:6964547569121296147",
+          "name": "status",
           "type": 9
         }
       ],

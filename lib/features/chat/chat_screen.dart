@@ -121,6 +121,17 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
+  Widget _buildStatusIcon(String? status) {
+    if (status == 'read') {
+      return const Icon(Icons.done_all, size: 14, color: Colors.cyanAccent);
+    } else if (status == 'delivered') {
+      return const Icon(Icons.done_all, size: 14, color: Colors.white60);
+    } else if (status == 'sent') {
+      return const Icon(Icons.check, size: 14, color: Colors.white60);
+    }
+    return const SizedBox.shrink();
+  }
+
   @override
   Widget build(BuildContext context) {
     final provider = context.watch<ChatProvider>();
@@ -173,10 +184,22 @@ class _ChatScreenState extends State<ChatScreen> {
                               borderRadius: BorderRadius.circular(12),
                               border: isTx ? Border.all(color: Colors.amber) : null,
                             ),
-                            child: Text(msg["text"] ?? "",
-                                style: TextStyle(
-                                    fontWeight: isTx ? FontWeight.bold : FontWeight.normal,
-                                    fontStyle: isTx ? FontStyle.italic : FontStyle.normal)),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              crossAxisAlignment: CrossAxisAlignment.end,
+                              children: [
+                                Flexible(
+                                  child: Text(msg["text"] ?? "",
+                                      style: TextStyle(
+                                          fontWeight: isTx ? FontWeight.bold : FontWeight.normal,
+                                          fontStyle: isTx ? FontStyle.italic : FontStyle.normal)),
+                                ),
+                                if (isMine && !isTx) ...[
+                                  const SizedBox(width: 6),
+                                  _buildStatusIcon(msg["status"]),
+                                ],
+                              ],
+                            ),
                           ),
                         );
                       },

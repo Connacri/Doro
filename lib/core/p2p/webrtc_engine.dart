@@ -39,7 +39,9 @@ class WebRTCNetworkEngine {
     final conn = PeerConnection();
     _connections[peerId] = conn; // Register early to handle incoming ICE
 
+    Logger.info("WebRTC: Calling conn.init() for $peerId");
     await conn.init();
+    Logger.info("WebRTC: conn.init() finished for $peerId");
 
     conn.onMessage = (msg) {
       try {
@@ -56,8 +58,13 @@ class WebRTCNetworkEngine {
       onChannelOpen?.call(peerId);
     });
 
+    Logger.info("WebRTC: Calling conn.createChannel() for $peerId");
     await conn.createChannel();
+    Logger.info("WebRTC: conn.createChannel() finished for $peerId");
+
+    Logger.info("WebRTC: Calling conn.createOffer() for $peerId");
     final offer = await conn.createOffer();
+    Logger.info("WebRTC: conn.createOffer() finished for $peerId");
 
     // Flush buffered ICE candidates
     _flushIceBuffer(peerId);

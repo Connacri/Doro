@@ -54,8 +54,39 @@ class ChatProvider extends ChangeNotifier {
             messagesWith(peer).add(Map<String, dynamic>.from(data));
             if (peer != _activePeer) {
               _unread[peer] = (_unread[peer] ?? 0) + 1;
+            } else {
+              sendReadReceipt(peer);
             }
             if (hasListeners) notifyListeners();
+          }
+        } else if (type == "chat_delivered") {
+          final peer = msg["from"];
+          final time = data["time"];
+          if (peer is String && time is String) {
+            final list = _conversations[peer];
+            if (list != null) {
+              for (final m in list) {
+                if (m["time"] == time && m["from"] == node.nodeId) {
+                  m["status"] = "delivered";
+                  break;
+                }
+              }
+              if (hasListeners) notifyListeners();
+            }
+          }
+        } else if (type == "chat_read") {
+          final peer = msg["from"];
+          final time = data["time"];
+          if (peer is String && time is String) {
+            final list = _conversations[peer];
+            if (list != null) {
+              for (final m in list) {
+                if (m["from"] == node.nodeId && (m["time"] as String).compareTo(time) <= 0) {
+                  m["status"] = "read";
+                }
+              }
+              if (hasListeners) notifyListeners();
+            }
           }
         }
       }
@@ -80,12 +111,27 @@ class ChatProvider extends ChangeNotifier {
   }
 
   String? _activePeer;
-  /// À appeler par ChatScreen quand une discussion s'ouvre/se ferme —
-  /// évite d'incrémenter le compteur de non-lus pour la conversation
-  /// actuellement affichée à l'écran.
   void setActivePeer(String? peerId) {
     _activePeer = peerId;
-    if (peerId != null) markRead(peerId);
+    if (peerId != null) {
+      markRead(peerId);
+      sendReadReceipt(peerId);
+    }
+  }
+
+  void sendReadReceipt(String peerId) {
+    final list = messagesWith(peerId);
+    if (list.isEmpty) return;
+    String? lastReceivedTime;
+    for (final m in list.reversed) {
+      if (m["from"] == peerId) {
+        lastReceivedTime = m["time"] as String?;
+        break;
+      }
+    }
+    if (lastReceivedTime != null) {
+      node.sendChatRead(peerId, lastReceivedTime);
+    }
   }
 
   void markRead(String peerId) {
@@ -188,6 +234,7 @@ class ChatProvider extends ChangeNotifier {
       "to": peerId,
       "text": text,
       "time": DateTime.now().toIso8601String(),
+      "status": "sent",
     });
     notifyListeners();
     try {

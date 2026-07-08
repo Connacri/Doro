@@ -26,7 +26,7 @@ class FriendRequest {
 /// comme avant — cette classe ne gère QUE l'état "en attente".
 class FriendRequestStore {
   static const _prefsKey = 'doro_friend_requests_v1';
-  Map<String, Map<String, String>> _data = {};
+  Map<String, Map<String, dynamic>> _data = {};
   bool _loaded = false;
 
   Future<void> load() async {
@@ -37,7 +37,7 @@ class FriendRequestStore {
     if (raw == null) return;
     try {
       final decoded = jsonDecode(raw) as Map<String, dynamic>;
-      _data = decoded.map((k, v) => MapEntry(k, Map<String, String>.from(v as Map)));
+      _data = decoded.map((k, v) => MapEntry(k, Map<String, dynamic>.from(v as Map)));
     } catch (_) {
       _data = {};
     }
@@ -61,9 +61,9 @@ class FriendRequestStore {
   List<FriendRequest> _entriesWhere(String direction) {
     return _data.entries.where((e) => e.value['direction'] == direction).map((e) => FriendRequest(
           publicKey: e.key,
-          name: (e.value['name']?.isEmpty ?? true) ? null : e.value['name'],
+          name: (e.value['name'] as String?)?.isEmpty ?? true ? null : e.value['name'] as String?,
           direction: direction == 'sent' ? FriendRequestDirection.sent : FriendRequestDirection.received,
-          time: e.value['time'] ?? '',
+          time: (e.value['time'] as String?) ?? '',
         )).toList();
   }
 

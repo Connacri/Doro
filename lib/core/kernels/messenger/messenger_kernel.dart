@@ -50,6 +50,12 @@ class MessengerKernel {
           case "friend_cancel":
             _handleFriendCancel(data);
             break;
+          case "chat_delivered":
+            _handleChatDelivered(data);
+            break;
+          case "chat_read":
+            _handleChatRead(data);
+            break;
         }
       }
     });
@@ -176,8 +182,9 @@ class MessengerKernel {
     if (_seenChatMessages.contains(msgKey)) return;
     _seenChatMessages.add(msgKey);
 
-    _msgBox.put(ChatMessageEntity(fromId: fromId, text: text, timestamp: time, peerKey: fromId));
+    _msgBox.put(ChatMessageEntity(fromId: fromId, text: text, timestamp: time, peerKey: fromId, status: 'read'));
     _messageController.add({"from": from, "data": data});
+    _sendOrQueue(fromId, {"type": "chat_delivered", "from": nodeId, "time": time});
   }
 
   void sendPrivateChat(String toPeerId, String text) {
@@ -232,8 +239,63 @@ class MessengerKernel {
   List<Map<String, dynamic>> historyWith(String peerKey) {
     return (_msgBox.query(ChatMessageEntity_.peerKey.equals(peerKey)).build().find()
           ..sort((a, b) => a.timestamp.compareTo(b.timestamp)))
-        .map((e) => {"from": e.fromId, "text": e.text, "time": e.timestamp})
+        .map<Map<String, dynamic>>((e) => {
+              "from": e.fromId,
+              "text": e.text,
+              "time": e.timestamp,
+              "status": e.status,
+            })
         .toList();
+  }
+
+  void sendChatReadConfirmation(String peerId, String timestamp) {
+    _sendOrQueue(peerId, {"type": "chat_read", "from": nodeId, "time": timestamp});
+  }
+
+  void _handleChatDelivered(Map<String, dynamic> data) {
+    final fromId = data["from"] as String?;
+    final time = data["time"] as String?;
+    if (fromId == null || time == null) return;
+
+    final query = _msgBox.query(
+      ChatMessageEntity_.fromId.equals(nodeId)
+      .and(ChatMessageEntity_.peerKey.equals(fromId))
+      .and(ChatMessageEntity_.timestamp.equals(time))
+    ).build();
+    final match = query.findFirst();
+    if (match != null && match.status == 'sent') {
+      match.status = 'delivered';
+      _msgBox.put(match);
+      Logger.info("MessengerKernel: Message at $time marked as delivered by $fromId");
+      _messageController.add({"from": fromId, "data": data});
+    }
+    query.close();
+  }
+
+  void _handleChatRead(Map<String, dynamic> data) {
+    final fromId = data["from"] as String?;
+    final time = data["time"] as String?;
+    if (fromId == null || time == null) return;
+
+    final query = _msgBox.query(
+      ChatMessageEntity_.fromId.equals(nodeId)
+      .and(ChatMessageEntity_.peerKey.equals(fromId))
+    ).build();
+    final list = query.find();
+    var updated = false;
+    for (final msg in list) {
+      if (msg.timestamp.compareTo(time) <= 0 && msg.status != 'read') {
+        msg.status = 'read';
+        _msgBox.put(msg);
+        updated = true;
+      }
+    }
+    query.close();
+
+    if (updated) {
+      Logger.info("MessengerKernel: Messages up to $time marked as read by $fromId");
+      _messageController.add({"from": fromId, "data": data});
+    }
   }
 
   Map<String, dynamic>? lastMessageWith(String peerKey) {

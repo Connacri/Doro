@@ -123,7 +123,7 @@ class _SendScreenState extends State<SendScreen> {
         children: [
           if (wallets.length > 1)
             DropdownButtonFormField<String>(
-              value: _selectedAddress,
+              initialValue: _selectedAddress,
               decoration: const InputDecoration(labelText: "Wallet source", border: OutlineInputBorder(), isDense: true),
               items: wallets.map((w) => DropdownMenuItem(
                 value: w.address,

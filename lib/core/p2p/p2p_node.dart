@@ -294,6 +294,7 @@ class P2PNode {
 
   DagAcceptResult broadcastTx(Transaction tx) => walletKernel.broadcastTx(tx);
   void sendChat(String toPeerId, String text) => messengerKernel.sendPrivateChat(toPeerId, text);
+  void sendChatRead(String toPeerId, String timestamp) => messengerKernel.sendChatReadConfirmation(toPeerId, timestamp);
 
   Stream<void> get friendEvents => messengerKernel.friendEvents;
   bool isFriend(String publicKey) => messengerKernel.isFriend(publicKey);

@@ -13,11 +13,15 @@ class ChatMessageEntity {
   /// Permet de filtrer l'historique par ami — plus de chat global.
   final String peerKey;
 
+  /// Message status: 'sent', 'delivered', 'read'
+  String status;
+
   ChatMessageEntity({
     this.id = 0,
     required this.fromId,
     required this.text,
     required this.timestamp,
     this.peerKey = '',
+    this.status = 'sent',
   });
 }

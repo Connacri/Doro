@@ -279,7 +279,11 @@ class _SimulatorScreenState extends State<SimulatorScreen> with TickerProviderSt
     }
     final replay = SimTx(id: newId('replay'), type: 'send', from: last.from, to: last.to, amount: last.amount, nonce: last.nonce);
     final r = node.addValidated(replay, sim, log: sim.log);
-    if (r == 'accepted') sim.metrics.txOk++; else sim.metrics.txRej++;
+    if (r == 'accepted') {
+      sim.metrics.txOk++;
+    } else {
+      sim.metrics.txRej++;
+    }
     sim.metrics.txTotal++;
     sim.log("↻ Rejeu (même nonce ${last.nonce}) : $r", r == 'accepted' ? 'ok' : (r.startsWith('rejected') ? 'rej' : 'pend'));
     setState(() {});
@@ -299,7 +303,11 @@ class _SimulatorScreenState extends State<SimulatorScreen> with TickerProviderSt
     final tx = SimTx(id: newId('overspend'), type: 'send', from: node.address, to: target.address, amount: tooMuch, nonce: nonce);
     final r = node.addValidated(tx, sim, log: sim.log);
     sim.metrics.txTotal++;
-    if (r == 'accepted') sim.metrics.txOk++; else sim.metrics.txRej++;
+    if (r == 'accepted') {
+      sim.metrics.txOk++;
+    } else {
+      sim.metrics.txRej++;
+    }
     sim.log("💸 Sur-dépense ($tooMuch DORO, solde=${node.balanceOf(node.address)}) : $r", r.startsWith('rejected') ? 'rej' : 'ok');
     setState(() {});
   }
@@ -309,7 +317,11 @@ class _SimulatorScreenState extends State<SimulatorScreen> with TickerProviderSt
     if (node == null) return;
     final tx = SimTx(id: newId('genesis2'), type: 'send', from: mintAddress, to: node.address, amount: 50000000000, nonce: 0);
     final r = node.addValidated(tx, sim, log: sim.log);
-    if (r == 'accepted') sim.metrics.txOk++; else sim.metrics.txRej++;
+    if (r == 'accepted') {
+      sim.metrics.txOk++;
+    } else {
+      sim.metrics.txRej++;
+    }
     sim.metrics.txTotal++;
     sim.log("🌱 2ᵉ genesis par ${node.name} : $r", r.startsWith('rejected') ? 'rej' : 'ok');
     setState(() {});
