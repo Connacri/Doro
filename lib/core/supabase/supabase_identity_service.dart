@@ -5,7 +5,7 @@
 //
 // Flow :
 //   1. Session anonyme Supabase (clé anon uniquement, jamais de secret).
-//   2. Signature Ed25519 locale du message "DORO_BIND:<auth_uid>:<ts>".
+//   2. Signature Ed25519 locale du message "DORO_BIND:&lt;auth_uid&gt;:&lt;ts&gt;".
 //   3. Appel de l'edge function bind-identity qui vérifie la signature
 //      et lie auth.uid() <-> public_key côté serveur (service_role,
 //      jamais exposée au client).
@@ -17,6 +17,7 @@ import 'dart:convert';
 import 'package:cryptography/cryptography.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../crypto/signature.dart';
 import '../storage/secure/keypair_store.dart';
 import '../utils/logger.dart';
 
@@ -31,7 +32,7 @@ class SupabaseIdentityService {
   /// À appeler une fois au démarrage, après que le wallet (donc la
   /// keypair Ed25519) existe déjà en secure storage.
   ///
-  /// [address] est l'adresse locale ("0x<pubkeyHex>") utilisée comme clé
+  /// [address] est l'adresse locale (`"0x<pubkeyHex>"`) utilisée comme clé
   /// dans KeypairStore — cf. wallet_core.dart / address_generator.dart.
   Future<String> ensureBound({
     required String address,

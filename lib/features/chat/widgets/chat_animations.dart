@@ -60,7 +60,7 @@ class MessageStatusTicks extends StatelessWidget {
       transitionBuilder: (child, anim) => ScaleTransition(scale: anim, child: child),
       child: Icon(
         showDouble ? Icons.done_all : Icons.done,
-        key: ValueKey('$status'),
+        key: ValueKey(status),
         size: 15,
         color: color,
       ),
