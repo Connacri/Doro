@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../core/supabase/profile_service.dart';
+import '../../core/utils/image_compress.dart';
 import '../../core/utils/logger.dart';
 
 /// Profil (nom, bio, avatar, couverture) — remplace l'ancienne diffusion
@@ -90,11 +91,15 @@ class ProfileProvider extends ChangeNotifier {
   Future<void> pickAvatar() async {
     final result = await FilePicker.platform.pickFiles(type: FileType.image, withData: true);
     if (result == null || result.files.isEmpty) return;
-    final bytes = result.files.first.bytes;
-    if (bytes == null) return;
+    final rawBytes = result.files.first.bytes;
+    if (rawBytes == null) return;
     try {
-      final ext = (result.files.first.extension ?? 'jpg').toLowerCase();
-      _avatarUrl = await service.uploadAvatar(bytes, ext: ext);
+      // Redimensionnée/recompressée en JPEG dans un isolate séparé —
+      // évite d'uploader une photo brute de plusieurs Mo et de bloquer
+      // l'UI le temps du traitement. La sortie est toujours du JPEG,
+      // quel que soit le format d'origine.
+      final compressed = await ImageCompressor.compressAvatar(rawBytes);
+      _avatarUrl = await service.uploadAvatar(compressed, ext: 'jpg');
       _mine = await service.getMyProfile();
       notifyListeners();
     } catch (e) {
@@ -114,11 +119,11 @@ class ProfileProvider extends ChangeNotifier {
   Future<void> pickCover() async {
     final result = await FilePicker.platform.pickFiles(type: FileType.image, withData: true);
     if (result == null || result.files.isEmpty) return;
-    final bytes = result.files.first.bytes;
-    if (bytes == null) return;
+    final rawBytes = result.files.first.bytes;
+    if (rawBytes == null) return;
     try {
-      final ext = (result.files.first.extension ?? 'jpg').toLowerCase();
-      _coverUrl = await service.uploadCover(bytes, ext: ext);
+      final compressed = await ImageCompressor.compressCover(rawBytes);
+      _coverUrl = await service.uploadCover(compressed, ext: 'jpg');
       _mine = await service.getMyProfile();
       notifyListeners();
     } catch (e) {
