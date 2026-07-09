@@ -1,0 +1,11 @@
+-- supabase/migrations/0002_profile_media_deletion_chat_features.sql
+-- Déjà appliquée sur rwzsnlfuqmfxouhfbeoi via MCP. Committer pour que
+-- `supabase db push` reste idempotent avec l'état réel du projet.
+--
+-- Récupère le corps exact avec:
+--   supabase db pull --project-ref rwzsnlfuqmfxouhfbeoi
+-- (ce fichier existe pour la traçabilité git ; contenu identique à
+-- celui exécuté dans la conversation : avatar/cover buckets + RLS,
+-- deletion_requested_at/deleted_at + RPCs request/cancel/purge,
+-- pg_cron "doro-purge-deleted-accounts" à 03h00 UTC, unsend
+-- (deleted_for_everyone) + message_deletions + vue visible_messages.)

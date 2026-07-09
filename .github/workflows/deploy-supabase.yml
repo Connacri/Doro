@@ -1,0 +1,48 @@
+name: Deploy Supabase (Doro)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "supabase/**"
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      # SUPABASE_ACCESS_TOKEN : token personnel (Account Settings > Access
+      #   Tokens sur supabase.com), donne à la CLI le droit d'agir sur ton
+      #   compte. À ajouter dans Settings > Secrets and variables > Actions.
+      # SUPABASE_DB_PASSWORD : mot de passe Postgres du projet, requis
+      #   pour `db push`. Idem, en secret GitHub.
+      # SUPABASE_PROJECT_REF : rwzsnlfuqmfxouhfbeoi (pas un secret à
+      #   proprement parler, mais autant le garder en secret/variable
+      #   pour ne pas le disperser en dur dans plusieurs fichiers).
+      #
+      # /!\ Aucun de ces trois secrets n'est la service_role key.
+      # La service_role key n'apparaît JAMAIS dans ce repo ni dans ces
+      # secrets : Supabase l'injecte lui-même dans le runtime des edge
+      # functions au déploiement.
+      - name: Link project
+        run: supabase link --project-ref "$SUPABASE_PROJECT_REF"
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+
+      - name: Push DB migrations
+        run: supabase db push --password "$SUPABASE_DB_PASSWORD"
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+
+      - name: Deploy edge functions
+        run: supabase functions deploy bind-identity --project-ref "$SUPABASE_PROJECT_REF"
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
