@@ -1,9 +1,10 @@
+// lib/features/chat/chat_provider.dart
 import 'dart:async';
 import 'package:flutter/material.dart';
-import '../../core/p2p/p2p_node.dart';
+import '../../core/kernels/messenger/supabase_messenger_kernel.dart';
+import '../../core/supabase/presence_service.dart';
 import '../../core/storage/entities/contact_entity.dart';
-import '../../core/storage/friends/friend_request_store.dart';
-import '../../core/storage/repositories/contact_repository.dart';
+import '../../core/storage/friends/friend_request_store.dart' show FriendRequest;
 import '../wallet/wallet_provider.dart';
 
 /// Aperçu d'une discussion pour la liste "Discussions" — comme l'écran
@@ -29,83 +30,60 @@ class ConversationPreview {
 }
 
 class ChatProvider extends ChangeNotifier {
-  final P2PNode node;
-  final ContactRepository contactRepo;
+  final SupabaseMessengerKernel messenger;
+  final PresenceService presence;
   WalletProvider? walletProvider;
 
   final Map<String, List<Map<String, dynamic>>> _conversations = {};
   final Map<String, int> _unread = {};
+  final Set<String> _typingPeers = {};
+
   StreamSubscription<Map<String, dynamic>>? _sub;
-  StreamSubscription<void>? _networkSub;
-  StreamSubscription<String>? _channelSub;
   StreamSubscription<void>? _friendSub;
-  StreamSubscription<String>? _sigErrSub;
+  StreamSubscription<Set<String>>? _presenceSub;
+  StreamSubscription<({String peer, bool typing})>? _typingSub;
 
-  String? lastSignalingError;
+  Set<String> _onlinePeers = {};
 
-  ChatProvider(this.node, this.contactRepo, {this.walletProvider}) {
-    _sub = node.messages.listen((msg) {
+  ChatProvider(this.messenger, this.presence, {this.walletProvider}) {
+    _sub = messenger.messages.listen((msg) {
       final data = msg["data"];
       if (data is Map) {
-        final type = data["type"];
-        if (type == "chat") {
-          final peer = data["from"] == node.nodeId ? data["to"] : data["from"];
-          if (peer is String) {
-            messagesWith(peer).add(Map<String, dynamic>.from(data));
-            if (peer != _activePeer) {
-              _unread[peer] = (_unread[peer] ?? 0) + 1;
-            } else {
-              sendReadReceipt(peer);
-            }
-            if (hasListeners) notifyListeners();
+        final peer = data["from"] == messenger.nodeId ? data["to"] : data["from"];
+        if (peer is String) {
+          final list = messagesWith(peer);
+          final time = data["time"] as String?;
+          final existingIndex = time == null ? -1 : list.indexWhere((m) => m["time"] == time);
+          if (existingIndex >= 0) {
+            list[existingIndex] = Map<String, dynamic>.from(data);
+          } else {
+            list.add(Map<String, dynamic>.from(data));
           }
-        } else if (type == "chat_delivered") {
-          final peer = msg["from"];
-          final time = data["time"];
-          if (peer is String && time is String) {
-            final list = _conversations[peer];
-            if (list != null) {
-              for (final m in list) {
-                if (m["time"] == time && m["from"] == node.nodeId) {
-                  m["status"] = "delivered";
-                  break;
-                }
-              }
-              if (hasListeners) notifyListeners();
-            }
+          if (peer != _activePeer && data["from"] != messenger.nodeId) {
+            _unread[peer] = (_unread[peer] ?? 0) + 1;
+          } else if (peer == _activePeer && data["from"] != messenger.nodeId) {
+            sendReadReceipt(peer);
           }
-        } else if (type == "chat_read") {
-          final peer = msg["from"];
-          final time = data["time"];
-          if (peer is String && time is String) {
-            final list = _conversations[peer];
-            if (list != null) {
-              for (final m in list) {
-                if (m["from"] == node.nodeId && (m["time"] as String).compareTo(time) <= 0) {
-                  m["status"] = "read";
-                }
-              }
-              if (hasListeners) notifyListeners();
-            }
-          }
+          if (hasListeners) notifyListeners();
         }
       }
     });
 
-    _friendSub = node.friendEvents.listen((_) {
+    _friendSub = messenger.friendEvents.listen((_) {
       if (hasListeners) notifyListeners();
     });
 
-    _channelSub = node.onChannelReady.listen((_) {
+    _presenceSub = presence.onlinePeers.listen((peers) {
+      _onlinePeers = peers;
       if (hasListeners) notifyListeners();
     });
 
-    _networkSub = node.networkChanges.listen((_) {
-      if (hasListeners) notifyListeners();
-    });
-
-    _sigErrSub = node.signalingErrors.listen((err) {
-      lastSignalingError = err;
+    _typingSub = presence.typingEvents.listen((event) {
+      if (event.typing) {
+        _typingPeers.add(event.peer);
+      } else {
+        _typingPeers.remove(event.peer);
+      }
       if (hasListeners) notifyListeners();
     });
   }
@@ -116,6 +94,10 @@ class ChatProvider extends ChangeNotifier {
     if (peerId != null) {
       markRead(peerId);
       sendReadReceipt(peerId);
+      messenger.syncHistoryWith(peerId).then((_) {
+        _conversations[peerId] = messenger.historyWith(peerId);
+        if (hasListeners) notifyListeners();
+      });
     }
   }
 
@@ -130,7 +112,7 @@ class ChatProvider extends ChangeNotifier {
       }
     }
     if (lastReceivedTime != null) {
-      node.sendChatRead(peerId, lastReceivedTime);
+      messenger.sendChatReadConfirmation(peerId, lastReceivedTime);
     }
   }
 
@@ -138,28 +120,29 @@ class ChatProvider extends ChangeNotifier {
     if (_unread.remove(peerId) != null) notifyListeners();
   }
 
-  bool isOnline(String peerId) => node.p2p.peers.containsKey(peerId);
-  String get myId => node.nodeId;
+  bool isOnline(String peerId) => _onlinePeers.contains(peerId);
+  bool isTyping(String peerId) => _typingPeers.contains(peerId);
+  void sendTyping(String peerId, bool typing) => presence.sendTyping(peerId, typing);
+  String get myId => messenger.nodeId;
 
   // ---------------- Amis : listes ----------------
 
-  List<ContactEntity> get friends => contactRepo.all();
-  List<FriendRequest> get receivedRequests => node.messengerKernel.friendRequests.received();
-  List<FriendRequest> get sentRequests => node.messengerKernel.friendRequests.sent();
-  bool isFriend(String publicKey) => node.isFriend(publicKey);
+  List<ContactEntity> get friends => messenger.friends();
+  List<FriendRequest> get receivedRequests => messenger.receivedRequests();
+  List<FriendRequest> get sentRequests => messenger.sentRequests();
+  bool isFriend(String publicKey) => messenger.isFriend(publicKey);
 
   /// La liste "Discussions" : tous les amis + tout pair avec qui j'ai
-  /// déjà échangé des messages (même sans lien d'amitié confirmé — comme
-  /// une discussion WhatsApp avec un numéro non enregistré), triée par
-  /// message le plus récent.
+  /// déjà échangé des messages, triée par message le plus récent.
   List<ConversationPreview> get conversations {
     final peerIds = <String>{
       ...friends.map((c) => c.publicKey),
-      ...node.messengerKernel.peersWithHistory(),
+      ...messenger.peersWithHistory(),
     };
     final list = peerIds.map((peerId) {
-      final contact = friends.firstWhere((c) => c.publicKey == peerId, orElse: () => ContactEntity(publicKey: peerId, name: _shortId(peerId)));
-      final last = node.messengerKernel.lastMessageWith(peerId);
+      final contact = friends.firstWhere((c) => c.publicKey == peerId,
+          orElse: () => ContactEntity(publicKey: peerId, name: _shortId(peerId)));
+      final last = messenger.lastMessageWith(peerId);
       return ConversationPreview(
         peerId: peerId,
         name: contact.name,
@@ -178,88 +161,70 @@ class ChatProvider extends ChangeNotifier {
 
   // ---------------- Amis : actions ----------------
 
-  /// Retourne `true` si la tentative de connexion a réussi (pair en
-  /// ligne et canal ouvert), `false` si le pair n'est pas joignable
-  /// pour l'instant (la demande partira dès qu'il reviendra en ligne).
-  /// Lance une exception si une condition bloquante empêche l'envoi
-  /// (signaling non connecté, etc.).
   Future<bool> sendFriendRequest(String publicKey, {String? name}) async {
     final key = publicKey.trim();
-    if (key.isEmpty || key == node.nodeId) return false;
-    await node.sendFriendRequest(key, name: name);
-    if (isOnline(key)) return true;
-
-    await node.connectPeer(key);
+    if (key.isEmpty || key == messenger.nodeId) return false;
+    await messenger.sendFriendRequest(key, name: name);
     notifyListeners();
-    return p2pChannelOpen(key);
-  }
-
-  bool p2pChannelOpen(String peerId) => node.p2p.isPeerChannelOpen(peerId);
-
-  void clearSignalingError() {
-    lastSignalingError = null;
-    notifyListeners();
+    return true;
   }
 
   Future<void> acceptRequest(String publicKey) async {
-    await node.acceptFriendRequest(publicKey);
+    await messenger.acceptFriendRequest(publicKey);
     notifyListeners();
   }
 
   Future<void> declineRequest(String publicKey) async {
-    await node.declineFriendRequest(publicKey);
+    await messenger.declineFriendRequest(publicKey);
     notifyListeners();
   }
 
   Future<void> cancelRequest(String publicKey) async {
-    await node.cancelFriendRequest(publicKey);
+    await messenger.cancelFriendRequest(publicKey);
     notifyListeners();
   }
 
-  void removeFriend(String publicKey) {
-    node.removeFriend(publicKey);
+  Future<void> removeFriend(String publicKey) async {
+    await messenger.removeFriend(publicKey);
     notifyListeners();
   }
 
   // ---------------- Chat ----------------
 
   List<Map<String, dynamic>> messagesWith(String peerId) =>
-      _conversations.putIfAbsent(peerId, () => node.messengerKernel.historyWith(peerId));
+      _conversations.putIfAbsent(peerId, () => messenger.historyWith(peerId));
 
   void send(String peerId, String text) {
     if (text.trim().isEmpty) return;
     messagesWith(peerId).add({
       "type": "chat",
-      "from": node.nodeId,
+      "from": messenger.nodeId,
       "to": peerId,
       "text": text,
       "time": DateTime.now().toIso8601String(),
       "status": "sent",
     });
     notifyListeners();
-    try {
-      node.sendChat(peerId, text);
-    } catch (_) {
-      // Ne devrait plus arriver : MessengerKernel met le message en
-      // file d'attente au lieu de le perdre si le pair est hors ligne.
-    }
-    // BUG corrigé : un ami "accepté" et présent dans la liste ne veut PAS
-    // dire qu'un canal WebRTC est ouvert vers lui maintenant (redémarrage
-    // de l'app, pair déconnecté depuis, etc.). Avant ce correctif,
-    // ouvrir le chat et taper un message le mettait juste en file
-    // d'attente indéfiniment (`MessengerKernel._outbox`) SANS JAMAIS
-    // relancer de tentative de connexion — le message ne partait donc
-    // jamais tant que le pair ne se reconnectait pas de son côté par
-    // hasard. On tente maintenant une reconnexion à chaque envoi vers un
-    // pair hors ligne, pour donner une vraie chance au message d'être
-    // délivré (il partira automatiquement dès l'ouverture du canal, la
-    // logique de flush de l'outbox existe déjà).
-    if (!isOnline(peerId)) {
-      node.connectPeer(peerId).catchError((e) {
-        lastSignalingError = "Impossible de joindre ce pair : $e";
+    messenger.sendPrivateChat(peerId, text);
+  }
+
+  /// Annule l'envoi d'un message pour tout le monde (comme WhatsApp/
+  /// Telegram), dans la fenêtre autorisée par le serveur (2h). Renvoie
+  /// `false` si le message est trop ancien ou n'appartient pas à
+  /// l'utilisateur.
+  Future<bool> unsend(String peerId, String timestamp) async {
+    final id = messenger.messageIdFor(peerId, timestamp);
+    if (id == null) return false;
+    final ok = await messenger.unsendMessage(id);
+    if (ok) {
+      final list = messagesWith(peerId);
+      final idx = list.indexWhere((m) => m["time"] == timestamp);
+      if (idx >= 0) {
+        list[idx] = {...list[idx], "text": "", "status": "deleted"};
         notifyListeners();
-      });
+      }
     }
+    return ok;
   }
 
   Future<bool> sendCrypto(String toAddress, BigInt amount) async {
@@ -272,7 +237,7 @@ class ChatProvider extends ChangeNotifier {
     if (txId != null) {
       messagesWith(toAddress).add({
         "type": "tx_info",
-        "from": node.nodeId,
+        "from": messenger.nodeId,
         "text": "💰 Envoi de ${(amount / BigInt.from(10).pow(18)).toStringAsFixed(2)} DORO",
         "time": DateTime.now().toIso8601String(),
       });
@@ -281,25 +246,28 @@ class ChatProvider extends ChangeNotifier {
     return txId != null;
   }
 
+  /// Vide la discussion "pour moi" uniquement (comme WhatsApp "Effacer
+  /// la discussion") — n'affecte pas l'historique de l'autre pair.
   void clearHistory(String peerId) {
     _conversations.remove(peerId);
-    node.messengerKernel.clearHistory(peerId);
+    messenger.clearConversationForMeOnServer(peerId);
     notifyListeners();
   }
 
   void clearAllHistory() {
+    for (final peerId in {...friends.map((c) => c.publicKey), ...messenger.peersWithHistory()}) {
+      messenger.clearConversationForMeOnServer(peerId);
+    }
     _conversations.clear();
-    node.messengerKernel.clearAllHistory();
     notifyListeners();
   }
 
   @override
   void dispose() {
     _sub?.cancel();
-    _networkSub?.cancel();
-    _channelSub?.cancel();
     _friendSub?.cancel();
-    _sigErrSub?.cancel();
+    _presenceSub?.cancel();
+    _typingSub?.cancel();
     super.dispose();
   }
 }

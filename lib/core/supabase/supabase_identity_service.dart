@@ -18,7 +18,6 @@ import 'package:cryptography/cryptography.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../crypto/signature.dart';
-import '../storage/secure/keypair_store.dart';
 import '../utils/logger.dart';
 
 class SupabaseIdentityService {
@@ -29,14 +28,14 @@ class SupabaseIdentityService {
 
   SupabaseClient get client => _client;
 
-  /// À appeler une fois au démarrage, après que le wallet (donc la
-  /// keypair Ed25519) existe déjà en secure storage.
-  ///
-  /// [address] est l'adresse locale (`"0x<pubkeyHex>"`) utilisée comme clé
-  /// dans KeypairStore — cf. wallet_core.dart / address_generator.dart.
+  /// À appeler une fois au démarrage, avec la paire de clés Ed25519 de
+  /// l'identité du node (`NodeIdentity.getOrCreate()` — la même clé qui
+  /// sert de `nodeId`/adresse partout ailleurs dans l'app). La clé
+  /// privée ne quitte jamais l'app : elle sert uniquement à signer le
+  /// message de preuve, jamais transmise telle quelle.
   Future<String> ensureBound({
-    required String address,
     required String publicKeyHex,
+    required KeyPair keyPair,
     String? displayName,
   }) async {
     // 1) Session anonyme (créée une seule fois, persistée par le SDK).
@@ -59,10 +58,6 @@ class SupabaseIdentityService {
     }
 
     // 2) Signature Ed25519 locale — la clé privée ne quitte jamais l'app.
-    final keyPair = await KeypairStore.load(address);
-    if (keyPair == null) {
-      throw StateError('SupabaseIdentityService: keypair introuvable pour $address');
-    }
     final timestamp = DateTime.now().millisecondsSinceEpoch;
     final message = 'DORO_BIND:$authUid:$timestamp';
     final signature = await _crypto.signString(message, keyPair: keyPair);

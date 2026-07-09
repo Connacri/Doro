@@ -103,7 +103,7 @@ class ChatsScreen extends StatelessWidget {
                             context: context,
                             builder: (ctx) => AlertDialog(
                               title: const Text("Supprimer la discussion ?"),
-                              content: Text("Tout l'historique avec ${c.name} sera effacé."),
+                              content: Text("L'historique avec ${c.name} sera effacé pour toi uniquement (comme sur WhatsApp)."),
                               actions: [
                                 TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("Annuler")),
                                 FilledButton(

@@ -1,8 +1,10 @@
 // lib/features/chat/chat_screen.dart
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../shared/extensions/string_ext.dart';
 import 'chat_provider.dart';
+import 'widgets/chat_animations.dart';
 import '../profile/peer_profile_screen.dart';
 
 class ChatScreen extends StatefulWidget {
@@ -18,37 +20,44 @@ class _ChatScreenState extends State<ChatScreen> {
   final controller = TextEditingController();
   final scrollCtrl = ScrollController();
   late ChatProvider _chatProvider;
-  String? _lastShownError;
+  Timer? _typingStopTimer;
+  bool _isTypingNow = false;
 
   @override
   void initState() {
     super.initState();
     _chatProvider = context.read<ChatProvider>();
-    _chatProvider.addListener(_onProviderChange);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) _chatProvider.setActivePeer(widget.peerId);
     });
+    controller.addListener(_onTextChanged);
   }
 
-  /// Affiche `lastSignalingError` (ex: tentative de reconnexion échouée
-  /// vers ce pair) au lieu de le laisser invisible — voir le correctif
-  /// dans `ChatProvider.send()`.
-  void _onProviderChange() {
-    final error = _chatProvider.lastSignalingError;
-    if (error != null && error != _lastShownError && mounted) {
-      _lastShownError = error;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(error), backgroundColor: Colors.red.shade800, duration: const Duration(seconds: 5)),
-      );
-      _chatProvider.clearSignalingError();
+  /// Diffuse "en train d'écrire" (throttlé) — comme WhatsApp/Messenger/
+  /// Telegram : un signal tant que l'utilisateur tape, puis un dernier
+  /// signal "stop" 2s après la dernière frappe.
+  void _onTextChanged() {
+    final hasText = controller.text.trim().isNotEmpty;
+    if (hasText && !_isTypingNow) {
+      _isTypingNow = true;
+      _chatProvider.sendTyping(widget.peerId, true);
     }
+    _typingStopTimer?.cancel();
+    _typingStopTimer = Timer(const Duration(seconds: 2), () {
+      if (_isTypingNow) {
+        _isTypingNow = false;
+        _chatProvider.sendTyping(widget.peerId, false);
+      }
+    });
   }
 
   @override
   void dispose() {
+    controller.removeListener(_onTextChanged);
+    _typingStopTimer?.cancel();
+    if (_isTypingNow) _chatProvider.sendTyping(widget.peerId, false);
     controller.dispose();
     scrollCtrl.dispose();
-    _chatProvider.removeListener(_onProviderChange);
     _chatProvider.setActivePeer(null);
     super.dispose();
   }
@@ -56,31 +65,19 @@ class _ChatScreenState extends State<ChatScreen> {
   void _send() {
     final text = controller.text;
     if (text.trim().isEmpty) return;
-    final wasOffline = !_chatProvider.isOnline(widget.peerId);
-    try {
-      _chatProvider.send(widget.peerId, text);
-      controller.clear();
-      if (wasOffline && mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Pair hors ligne — message en attente, tentative de reconnexion en cours…"), duration: Duration(seconds: 3)),
-        );
-      }
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (scrollCtrl.hasClients) {
-          scrollCtrl.animateTo(scrollCtrl.position.maxScrollExtent,
-              duration: const Duration(milliseconds: 200), curve: Curves.easeOut);
-        }
-      });
-    } catch (e) {
-      // Ce catch ne devrait plus jamais rester muet : toute erreur réelle
-      // ici est désormais visible pour l'utilisateur au lieu d'être
-      // avalée en silence.
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("Échec de l'envoi : $e"), backgroundColor: Colors.red.shade800),
-        );
-      }
+    _chatProvider.send(widget.peerId, text);
+    controller.clear();
+    _typingStopTimer?.cancel();
+    if (_isTypingNow) {
+      _isTypingNow = false;
+      _chatProvider.sendTyping(widget.peerId, false);
     }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (scrollCtrl.hasClients) {
+        scrollCtrl.animateTo(scrollCtrl.position.maxScrollExtent,
+            duration: const Duration(milliseconds: 200), curve: Curves.easeOut);
+      }
+    });
   }
 
   void _sendCrypto(BuildContext context) {
@@ -121,15 +118,33 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
-  Widget _buildStatusIcon(String? status) {
-    if (status == 'read') {
-      return const Icon(Icons.done_all, size: 14, color: Colors.cyanAccent);
-    } else if (status == 'delivered') {
-      return const Icon(Icons.done_all, size: 14, color: Colors.white60);
-    } else if (status == 'sent') {
-      return const Icon(Icons.check, size: 14, color: Colors.white60);
-    }
-    return const SizedBox.shrink();
+  /// Menu contextuel façon WhatsApp/Telegram sur appui long : "Annuler
+  /// l'envoi" (unsend, seulement sur mes propres messages, fenêtre de
+  /// 2h côté serveur).
+  void _showMessageMenu(BuildContext context, Map<String, dynamic> msg, bool isMine) {
+    if (!isMine || msg["status"] == "deleted") return;
+    showModalBottomSheet(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Wrap(children: [
+          ListTile(
+            leading: const Icon(Icons.undo, color: Colors.redAccent),
+            title: const Text("Annuler l'envoi (pour tout le monde)"),
+            onTap: () async {
+              Navigator.pop(ctx);
+              final time = msg["time"] as String?;
+              if (time == null) return;
+              final ok = await context.read<ChatProvider>().unsend(widget.peerId, time);
+              if (!ok && context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text("Impossible d'annuler cet envoi (trop ancien ?)")),
+                );
+              }
+            },
+          ),
+        ]),
+      ),
+    );
   }
 
   @override
@@ -137,6 +152,7 @@ class _ChatScreenState extends State<ChatScreen> {
     final provider = context.watch<ChatProvider>();
     final messages = provider.messagesWith(widget.peerId);
     final online = provider.isOnline(widget.peerId);
+    final typing = provider.isTyping(widget.peerId);
 
     return Scaffold(
       appBar: AppBar(
@@ -144,14 +160,20 @@ class _ChatScreenState extends State<ChatScreen> {
           onTap: () => Navigator.of(context).push(
             MaterialPageRoute(builder: (_) => PeerProfileScreen(peerId: widget.peerId)),
           ),
-          child: Text(widget.peerName),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(widget.peerName),
+              const SizedBox(width: 8),
+              if (typing)
+                const Padding(padding: EdgeInsets.only(top: 2), child: TypingIndicator())
+              else
+                OnlineDot(online: online),
+            ],
+          ),
         ),
         actions: [
           IconButton(icon: const Icon(Icons.currency_bitcoin), tooltip: "Envoyer Crypto", onPressed: () => _sendCrypto(context)),
-          Padding(
-            padding: const EdgeInsets.only(right: 12),
-            child: Center(child: Icon(Icons.circle, size: 10, color: online ? Colors.green : Colors.grey)),
-          ),
         ],
       ),
       // top:false car l'AppBar gère déjà la status bar — évite un double
@@ -172,9 +194,13 @@ class _ChatScreenState extends State<ChatScreen> {
                         final msg = messages[index];
                         final isMine = msg["from"] == provider.myId;
                         final isTx = msg["type"] == "tx_info";
-                        return Align(
-                          alignment: isMine ? Alignment.centerRight : Alignment.centerLeft,
-                          child: Container(
+                        final isDeleted = msg["status"] == "deleted";
+
+                        Widget bubble;
+                        if (isDeleted) {
+                          bubble = const DeletedMessageBubble();
+                        } else {
+                          bubble = Container(
                             margin: const EdgeInsets.symmetric(vertical: 4),
                             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                             decoration: BoxDecoration(
@@ -196,10 +222,18 @@ class _ChatScreenState extends State<ChatScreen> {
                                 ),
                                 if (isMine && !isTx) ...[
                                   const SizedBox(width: 6),
-                                  _buildStatusIcon(msg["status"]),
+                                  MessageStatusTicks(status: msg["status"] as String? ?? 'sent'),
                                 ],
                               ],
                             ),
+                          );
+                        }
+
+                        return Align(
+                          alignment: isMine ? Alignment.centerRight : Alignment.centerLeft,
+                          child: GestureDetector(
+                            onLongPress: () => _showMessageMenu(context, msg, isMine),
+                            child: AnimatedMessageBubble(isMine: isMine, child: bubble),
                           ),
                         );
                       },

@@ -21,6 +21,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../storage/objectbox/store.dart';
 import '../../storage/entities/chat_message_entity.dart';
 import '../../storage/entities/contact_entity.dart';
+import '../../storage/friends/friend_request_store.dart' show FriendRequest, FriendRequestDirection;
 import '../../../objectbox.g.dart';
 import '../../utils/logger.dart';
 
@@ -31,6 +32,19 @@ class SupabaseMessengerKernel {
 
   late final Box<ChatMessageEntity> _msgBox;
   late final Box<ContactEntity> _contactBox;
+
+  // Les uuids serveur ne sont pas stockés dans ObjectBox (pas de
+  // migration de schéma nécessaire) : on les garde en mémoire, indexés
+  // par "peerKey|timestamp", pour permettre l'unsend sur un message
+  // chargé depuis le cache local.
+  final Map<String, String> _serverIds = {};
+  String _idKey(String peerKey, String timestamp) => '$peerKey|$timestamp';
+  String? messageIdFor(String peerKey, String timestamp) => _serverIds[_idKey(peerKey, timestamp)];
+
+  List<FriendRequest> _received = [];
+  List<FriendRequest> _sent = [];
+  List<FriendRequest> receivedRequests() => _received;
+  List<FriendRequest> sentRequests() => _sent;
 
   final _messageController = StreamController<Map<String, dynamic>>.broadcast();
   Stream<Map<String, dynamic>> get messages => _messageController.stream;
@@ -51,6 +65,7 @@ class SupabaseMessengerKernel {
     _contactBox = db.getBox<ContactEntity>();
     _subscribeRealtime();
     _hydrateFriendsFromServer();
+    _hydrateFriendRequestsFromServer();
   }
 
   // ---------------------------------------------------------------
@@ -97,7 +112,7 @@ class SupabaseMessengerKernel {
             column: 'to_pubkey',
             value: nodeId,
           ),
-          callback: (_) => _friendEventsController.add(null),
+          callback: (_) => _hydrateFriendRequestsFromServer(),
         )
         .onPostgresChanges(
           event: PostgresChangeEvent.all,
@@ -108,7 +123,7 @@ class SupabaseMessengerKernel {
             column: 'from_pubkey',
             value: nodeId,
           ),
-          callback: (_) => _friendEventsController.add(null),
+          callback: (_) => _hydrateFriendRequestsFromServer(),
         )
         .subscribe();
 
@@ -147,6 +162,8 @@ class SupabaseMessengerKernel {
     final peerKey = fromId == nodeId ? toId : fromId;
     final effectiveStatus = deletedForEveryone ? 'deleted' : status;
 
+    if (id != null) _serverIds[_idKey(peerKey, time)] = id;
+
     final existing = _msgBox
         .query(ChatMessageEntity_.peerKey.equals(peerKey).and(ChatMessageEntity_.timestamp.equals(time)))
         .build()
@@ -175,6 +192,43 @@ class SupabaseMessengerKernel {
     // nouveau message encore 'sent'.
     if (toId == nodeId && status == 'sent' && id != null) {
       _markStatus(id, 'delivered');
+    }
+  }
+
+  Future<void> _hydrateFriendRequestsFromServer() async {
+    try {
+      final receivedRows = await supabase
+          .from('friend_requests')
+          .select()
+          .eq('to_pubkey', nodeId)
+          .eq('status', 'pending')
+          .order('created_at');
+      final sentRows = await supabase
+          .from('friend_requests')
+          .select()
+          .eq('from_pubkey', nodeId)
+          .eq('status', 'pending')
+          .order('created_at');
+
+      _received = (receivedRows as List)
+          .map((r) => FriendRequest(
+                publicKey: r['from_pubkey'] as String,
+                name: (r['display_name'] as String?)?.isEmpty ?? true ? null : r['display_name'] as String?,
+                direction: FriendRequestDirection.received,
+                time: r['created_at'] as String,
+              ))
+          .toList();
+      _sent = (sentRows as List)
+          .map((r) => FriendRequest(
+                publicKey: r['to_pubkey'] as String,
+                name: (r['display_name'] as String?)?.isEmpty ?? true ? null : r['display_name'] as String?,
+                direction: FriendRequestDirection.sent,
+                time: r['created_at'] as String,
+              ))
+          .toList();
+      _friendEventsController.add(null);
+    } catch (e) {
+      Logger.info('SupabaseMessengerKernel: hydrateFriendRequests a échoué (offline ?) $e');
     }
   }
 
@@ -239,7 +293,7 @@ class SupabaseMessengerKernel {
       }
       rethrow;
     }
-    _friendEventsController.add(null);
+    await _hydrateFriendRequestsFromServer();
   }
 
   Future<void> acceptFriendRequest(String fromPeerId) async {
@@ -251,7 +305,7 @@ class SupabaseMessengerKernel {
     // Le trigger SQL crée la friendship + purge la demande ; on
     // rafraîchit localement sans attendre le round-trip Realtime.
     _addLocalFriend(fromPeerId);
-    _friendEventsController.add(null);
+    await _hydrateFriendRequestsFromServer();
   }
 
   Future<void> declineFriendRequest(String fromPeerId) async {
@@ -260,7 +314,7 @@ class SupabaseMessengerKernel {
         .update({'status': 'declined'})
         .eq('from_pubkey', fromPeerId)
         .eq('to_pubkey', nodeId);
-    _friendEventsController.add(null);
+    await _hydrateFriendRequestsFromServer();
   }
 
   Future<void> cancelFriendRequest(String toPeerId) async {
@@ -269,7 +323,7 @@ class SupabaseMessengerKernel {
         .delete()
         .eq('from_pubkey', nodeId)
         .eq('to_pubkey', toPeerId);
-    _friendEventsController.add(null);
+    await _hydrateFriendRequestsFromServer();
   }
 
   Future<void> removeFriend(String publicKey) async {
@@ -370,6 +424,8 @@ class SupabaseMessengerKernel {
       for (final row in rows as List) {
         final fromId = row['from_pubkey'] as String;
         final time = row['created_at'] as String;
+        final rowId = row['id'] as String?;
+        if (rowId != null) _serverIds[_idKey(peerKey, time)] = rowId;
         final existing = _msgBox
             .query(ChatMessageEntity_.peerKey.equals(peerKey).and(ChatMessageEntity_.timestamp.equals(time)))
             .build()
