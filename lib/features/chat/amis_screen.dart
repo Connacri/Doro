@@ -1,6 +1,4 @@
 // lib/features/chat/amis_screen.dart
-import 'dart:convert';
-import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'chat_provider.dart';
@@ -222,21 +220,13 @@ class _AmisScreenState extends State<AmisScreen> {
                   itemBuilder: (context, i) {
                     final c = friends[i];
                     final online = provider.isOnline(c.publicKey);
-                    final peerProfile = context.watch<ProfileProvider>().peerProfile(c.publicKey);
-                    Uint8List? photoBytes;
-                    if (peerProfile != null && peerProfile.photoBase64.isNotEmpty) {
-                      try {
-                        photoBytes = base64Decode(peerProfile.photoBase64);
-                      } catch (_) {
-                        photoBytes = null;
-                      }
-                    }
+                    final avatarUrl = context.watch<ProfileProvider>().peerAvatarUrl(c.publicKey);
                     return ListTile(
                       leading: GestureDetector(
                         onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => PeerProfileScreen(peerId: c.publicKey))),
                         child: CircleAvatar(
-                          backgroundImage: photoBytes != null ? MemoryImage(photoBytes) : null,
-                          child: photoBytes == null ? Text(c.name.isNotEmpty ? c.name[0].toUpperCase() : "?") : null,
+                          backgroundImage: avatarUrl != null ? NetworkImage(avatarUrl) : null,
+                          child: avatarUrl == null ? Text(c.name.isNotEmpty ? c.name[0].toUpperCase() : "?") : null,
                         ),
                       ),
                       title: Text(c.name),

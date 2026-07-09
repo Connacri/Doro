@@ -13,7 +13,6 @@ import 'features/ledger/ledger_provider.dart';
 import 'features/network/network_provider.dart';
 import 'core/storage/objectbox/store.dart';
 import 'core/storage/repositories/wallet_repository.dart';
-import 'core/storage/repositories/profile_repository.dart';
 import 'core/p2p/p2p_node.dart';
 import 'core/bootstrap/bootstrap_service.dart';
 import 'core/utils/logger.dart';
@@ -23,6 +22,7 @@ import 'core/supabase/supabase_config.dart';
 import 'core/supabase/supabase_identity_service.dart';
 import 'core/supabase/presence_service.dart';
 import 'core/kernels/messenger/supabase_messenger_kernel.dart';
+import 'core/supabase/profile_service.dart';
 import 'features/market/market_provider.dart';
 import 'features/profile/profile_provider.dart';
 import 'features/profile/profile_screen.dart';
@@ -38,15 +38,14 @@ class _DoroAppState extends State<DoroApp> with WidgetsBindingObserver {
   P2PNode? _node;
   SupabaseMessengerKernel? _messenger;
   PresenceService? _presence;
+  ProfileService? _profileService;
   late final WalletRepository _walletRepo;
-  late final ProfileRepository _profileRepo;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _walletRepo = WalletRepository(widget.db);
-    _profileRepo = ProfileRepository(widget.db);
     if (!Platform.environment.containsKey('FLUTTER_TEST')) {
       _initNode();
     }
@@ -97,6 +96,7 @@ class _DoroAppState extends State<DoroApp> with WidgetsBindingObserver {
           db: widget.db,
         );
         _presence = PresenceService(supabase, identity.nodeId)..start();
+        _profileService = ProfileService(supabase, identity.nodeId);
       } catch (e) {
         Logger.error("Supabase messenger init failed: $e");
       }
@@ -123,7 +123,8 @@ class _DoroAppState extends State<DoroApp> with WidgetsBindingObserver {
     final node = _node;
     final messenger = _messenger;
     final presence = _presence;
-    if (node == null || messenger == null || presence == null) {
+    final profileService = _profileService;
+    if (node == null || messenger == null || presence == null || profileService == null) {
       return const MaterialApp(
         debugShowCheckedModeBanner: false,
         home: Scaffold(body: Center(child: CircularProgressIndicator())),
@@ -144,7 +145,7 @@ class _DoroAppState extends State<DoroApp> with WidgetsBindingObserver {
           create: (_) => MarketProvider(node),
           update: (_, wallet, market) => market!..walletProvider = wallet,
         ),
-        ChangeNotifierProvider(create: (_) => ProfileProvider(_profileRepo, node: node)),
+        ChangeNotifierProvider(create: (_) => ProfileProvider(profileService, profileService.client, node.nodeId)),
       ],
       child: MaterialApp(
         debugShowCheckedModeBanner: false,

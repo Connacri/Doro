@@ -23,6 +23,8 @@ class ProfileService {
   final SupabaseClient _client;
   final String nodeId; // = public_key
 
+  SupabaseClient get client => _client;
+
   ProfileService(this._client, this.nodeId);
 
   // ---------------------------------------------------------------
@@ -33,8 +35,20 @@ class ProfileService {
     return await _client.from('profiles').select().eq('public_key', nodeId).maybeSingle();
   }
 
+  /// Profil PUBLIC d'un pair quelconque (nom/bio/avatar/cover) — comme
+  /// avant en P2P, le profil est une information publique par nature,
+  /// visible de tout utilisateur authentifié (cf. policy
+  /// `profiles_select_all_authenticated`).
+  Future<Map<String, dynamic>?> getProfile(String publicKey) async {
+    return await _client.from('profiles').select().eq('public_key', publicKey).maybeSingle();
+  }
+
   Future<void> updateDisplayName(String name) async {
     await _client.from('profiles').update({'display_name': name}).eq('public_key', nodeId);
+  }
+
+  Future<void> updateBio(String bio) async {
+    await _client.from('profiles').update({'bio': bio}).eq('public_key', nodeId);
   }
 
   /// Upload/replace la photo de profil. [bytes] = contenu du fichier

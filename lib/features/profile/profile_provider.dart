@@ -1,92 +1,206 @@
-import 'dart:io';
+// lib/features/profile/profile_provider.dart
+import 'dart:async';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
-import 'package:path_provider/path_provider.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
-import '../../core/p2p/p2p_node.dart';
-import '../../core/storage/entities/peer_profile_entity.dart';
-import '../../core/storage/entities/profile_entity.dart';
-import '../../core/storage/repositories/profile_repository.dart';
+import '../../core/supabase/profile_service.dart';
 import '../../core/utils/logger.dart';
 
+/// Profil (nom, bio, avatar, couverture) — remplace l'ancienne diffusion
+/// P2P par Supabase : `profiles` est une table PUBLIQUE en lecture pour
+/// tout utilisateur authentifié (même sémantique qu'avant : un profil
+/// n'est pas une info privée), avec Realtime pour recevoir les mises à
+/// jour des autres pairs sans polling.
 class ProfileProvider extends ChangeNotifier {
-  final ProfileRepository repo;
-  final P2PNode? node;
+  final ProfileService service;
+  final SupabaseClient supabase;
+  final String nodeId;
 
-  ProfileEntity? _mine;
-  ProfileEntity? get mine => _mine;
+  Map<String, dynamic>? _mine;
+  Map<String, dynamic>? get mine => _mine;
+
+  String? _avatarUrl;
+  String? _coverUrl;
+  String? get avatarUrl => _avatarUrl;
+  String? get coverUrl => _coverUrl;
 
   bool _saving = false;
   bool get saving => _saving;
 
-  ProfileProvider(this.repo, {this.node}) {
-    _mine = repo.getOrCreateMine();
-    node?.profileChanges.listen((_) => notifyListeners());
+  DeletionStatus? _deletionStatus;
+  DeletionStatus? get deletionStatus => _deletionStatus;
+
+  final Map<String, Map<String, dynamic>> _peerCache = {};
+  final Map<String, String?> _peerAvatarUrlCache = {};
+
+  RealtimeChannel? _channel;
+
+  ProfileProvider(this.service, this.supabase, this.nodeId) {
+    _loadMine();
+    _subscribeRealtime();
   }
 
-  String get myAddress => node?.nodeId ?? "";
+  String get myAddress => nodeId;
 
-  Future<void> pickPhoto() async {
-    final result = await FilePicker.platform.pickFiles(
-      type: FileType.image,
-      allowMultiple: false,
-    );
-    if (result == null || result.files.isEmpty) return;
-
-    final picked = result.files.first;
-    if (picked.path == null) return;
-
+  Future<void> _loadMine() async {
     try {
-      final docsDir = await getApplicationDocumentsDirectory();
-      final destPath = "${docsDir.path}/profile_photo.jpg";
-      final bytes = await File(picked.path!).readAsBytes();
-      await File(destPath).writeAsBytes(bytes, flush: true);
-
-      final profile = repo.getOrCreateMine();
-      profile.photoPath = destPath;
-      repo.saveMine(profile);
-      _mine = profile;
+      _mine = await service.getMyProfile();
+      _avatarUrl = await service.resolveAvatarUrl(_mine?['avatar_url'] as String?);
+      _coverUrl = await service.resolveCoverUrl(_mine?['cover_url'] as String?);
+      _deletionStatus = await service.deletionStatus();
       notifyListeners();
-
-      await node?.broadcastMyProfile();
     } catch (e) {
-      Logger.error("Impossible d'enregistrer la photo de profil : $e");
+      Logger.error("ProfileProvider: chargement du profil impossible : $e");
+    }
+  }
+
+  void _subscribeRealtime() {
+    _channel = supabase
+        .channel('profiles:all')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'profiles',
+          callback: (payload) {
+            final row = payload.newRecord;
+            final pubkey = row['public_key'] as String?;
+            if (pubkey == null) return;
+            _peerCache[pubkey] = row;
+            _peerAvatarUrlCache.remove(pubkey); // invalide le cache d'URL signée
+            if (pubkey == nodeId) {
+              _mine = row;
+              service.resolveAvatarUrl(row['avatar_url'] as String?).then((u) {
+                _avatarUrl = u;
+                notifyListeners();
+              });
+              service.resolveCoverUrl(row['cover_url'] as String?).then((u) {
+                _coverUrl = u;
+                notifyListeners();
+              });
+            }
+            notifyListeners();
+          },
+        )
+        .subscribe();
+  }
+
+  // ---------------- Mon profil ----------------
+
+  Future<void> pickAvatar() async {
+    final result = await FilePicker.platform.pickFiles(type: FileType.image, withData: true);
+    if (result == null || result.files.isEmpty) return;
+    final bytes = result.files.first.bytes;
+    if (bytes == null) return;
+    try {
+      final ext = (result.files.first.extension ?? 'jpg').toLowerCase();
+      _avatarUrl = await service.uploadAvatar(bytes, ext: ext);
+      _mine = await service.getMyProfile();
+      notifyListeners();
+    } catch (e) {
+      Logger.error("Impossible de mettre à jour la photo de profil : $e");
       rethrow;
     }
   }
 
-  Future<void> removePhoto() async {
-    final profile = repo.getOrCreateMine();
-    if (profile.photoPath.isNotEmpty) {
-      try {
-        final f = File(profile.photoPath);
-        if (await f.exists()) await f.delete();
-      } catch (_) {
-        // Pas bloquant : au pire un fichier orphelin reste sur le disque.
-      }
-    }
-    profile.photoPath = "";
-    repo.saveMine(profile);
-    _mine = profile;
+  Future<void> removeAvatar() async {
+    await service.deleteAvatar();
+    _avatarUrl = null;
+    _mine = await service.getMyProfile();
     notifyListeners();
-    await node?.broadcastMyProfile();
+  }
+
+  /// Photo de couverture façon Facebook, en bannière au-dessus du profil.
+  Future<void> pickCover() async {
+    final result = await FilePicker.platform.pickFiles(type: FileType.image, withData: true);
+    if (result == null || result.files.isEmpty) return;
+    final bytes = result.files.first.bytes;
+    if (bytes == null) return;
+    try {
+      final ext = (result.files.first.extension ?? 'jpg').toLowerCase();
+      _coverUrl = await service.uploadCover(bytes, ext: ext);
+      _mine = await service.getMyProfile();
+      notifyListeners();
+    } catch (e) {
+      Logger.error("Impossible de mettre à jour la photo de couverture : $e");
+      rethrow;
+    }
+  }
+
+  Future<void> removeCover() async {
+    await service.deleteCover();
+    _coverUrl = null;
+    _mine = await service.getMyProfile();
+    notifyListeners();
   }
 
   Future<void> saveNameAndBio({required String name, required String bio}) async {
     _saving = true;
     notifyListeners();
     try {
-      final profile = repo.getOrCreateMine();
-      profile.displayName = name.trim();
-      profile.bio = bio.trim();
-      repo.saveMine(profile);
-      _mine = profile;
-      await node?.broadcastMyProfile();
+      await service.updateDisplayName(name.trim());
+      await service.updateBio(bio.trim());
+      _mine = await service.getMyProfile();
     } finally {
       _saving = false;
       notifyListeners();
     }
   }
 
-  PeerProfileEntity? peerProfile(String peerId) => repo.getPeerProfile(peerId);
+  // ---------------- Suppression de compte (façon Facebook) ----------------
+
+  Future<DateTime> requestAccountDeletion() async {
+    final date = await service.requestAccountDeletion();
+    _deletionStatus = DeletionStatus(date);
+    notifyListeners();
+    return date;
+  }
+
+  Future<bool> cancelAccountDeletion() async {
+    final ok = await service.cancelAccountDeletion();
+    if (ok) {
+      _deletionStatus = DeletionStatus(null);
+      notifyListeners();
+    }
+    return ok;
+  }
+
+  // ---------------- Profils des pairs ----------------
+
+  /// Renvoie le profil en cache s'il existe déjà (Realtime le tient à
+  /// jour) ; sinon lance une récupération asynchrone et notifie une fois
+  /// arrivée.
+  Map<String, dynamic>? peerProfile(String peerId) {
+    final cached = _peerCache[peerId];
+    if (cached != null) return cached;
+    service.getProfile(peerId).then((row) {
+      if (row != null) {
+        _peerCache[peerId] = row;
+        notifyListeners();
+      }
+    });
+    return null;
+  }
+
+  /// URL signée (avatar) pour un pair — résolue paresseusement et mise
+  /// en cache le temps de sa validité (7 jours).
+  String? peerAvatarUrl(String peerId) {
+    if (_peerAvatarUrlCache.containsKey(peerId)) return _peerAvatarUrlCache[peerId];
+    final profile = _peerCache[peerId];
+    final path = profile?['avatar_url'] as String?;
+    _peerAvatarUrlCache[peerId] = null; // évite les résolutions en boucle pendant l'attente
+    if (path != null) {
+      service.resolveAvatarUrl(path).then((url) {
+        _peerAvatarUrlCache[peerId] = url;
+        notifyListeners();
+      });
+    }
+    return null;
+  }
+
+  @override
+  void dispose() {
+    _channel?.unsubscribe();
+    super.dispose();
+  }
 }

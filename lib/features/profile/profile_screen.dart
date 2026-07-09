@@ -1,4 +1,3 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -32,18 +31,30 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   void _loadFromProvider(ProfileProvider provider) {
     if (_loaded) return;
+    if (provider.mine == null) return; // pas encore chargé depuis Supabase
     _loaded = true;
-    _nameCtrl.text = provider.mine?.displayName ?? "";
-    _bioCtrl.text = provider.mine?.bio ?? "";
+    _nameCtrl.text = (provider.mine?['display_name'] as String?) ?? "";
+    _bioCtrl.text = (provider.mine?['bio'] as String?) ?? "";
   }
 
-  Future<void> _pickPhoto() async {
+  Future<void> _pickAvatar() async {
     try {
-      await context.read<ProfileProvider>().pickPhoto();
+      await context.read<ProfileProvider>().pickAvatar();
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text("Impossible de mettre à jour la photo : $e")),
+      );
+    }
+  }
+
+  Future<void> _pickCover() async {
+    try {
+      await context.read<ProfileProvider>().pickCover();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Impossible de mettre à jour la couverture : $e")),
       );
     }
   }
@@ -55,129 +66,272 @@ class _ProfileScreenState extends State<ProfileScreen> {
         );
     if (!context.mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text("Profil mis à jour et diffusé au réseau")),
+      const SnackBar(content: Text("Profil mis à jour")),
     );
   }
+
+  /// Suppression de compte façon Facebook : programmée dans 30 jours,
+  /// annulable en se reconnectant avant cette date — voir
+  /// ProfileService.requestAccountDeletion().
+  Future<void> _confirmDeleteAccount(BuildContext context) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text("Supprimer ton compte ?"),
+        content: const Text(
+          "Ton compte sera désactivé immédiatement puis définitivement supprimé "
+          "dans 30 jours (profil, messages, amis, wallet lié). "
+          "Tu peux annuler à tout moment avant cette date en te reconnectant.",
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text("Annuler")),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text("Supprimer mon compte"),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !context.mounted) return;
+    final date = await context.read<ProfileProvider>().requestAccountDeletion();
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text("Compte programmé pour suppression le ${_formatDate(date)}."),
+        duration: const Duration(seconds: 6),
+      ),
+    );
+  }
+
+  String _formatDate(DateTime d) => "${d.day}/${d.month}/${d.year}";
 
   @override
   Widget build(BuildContext context) {
     final provider = context.watch<ProfileProvider>();
     _loadFromProvider(provider);
-    final photoPath = provider.mine?.photoPath ?? "";
-    final hasPhoto = photoPath.isNotEmpty && File(photoPath).existsSync();
+    final avatarUrl = provider.avatarUrl;
+    final coverUrl = provider.coverUrl;
+    final deletion = provider.deletionStatus;
 
     return Scaffold(
       appBar: AppBar(title: const Text("Mon profil")),
       body: SafeArea(
         child: ListView(
-          padding: const EdgeInsets.all(16),
+          padding: EdgeInsets.zero,
           children: [
-            Center(
-              child: Stack(
-                children: [
-                  CircleAvatar(
-                    radius: 56,
-                    backgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest,
-                    backgroundImage: hasPhoto ? FileImage(File(photoPath)) : null,
-                    child: hasPhoto ? null : const Icon(Icons.person, size: 56),
+            if (deletion?.isPendingDeletion == true)
+              Container(
+                width: double.infinity,
+                color: Colors.red.shade900,
+                padding: const EdgeInsets.all(12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      "Ton compte sera supprimé le ${_formatDate(deletion!.scheduledFor!)}.",
+                      style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                    ),
+                    const SizedBox(height: 4),
+                    TextButton(
+                      style: TextButton.styleFrom(foregroundColor: Colors.white, backgroundColor: Colors.white24),
+                      onPressed: () async {
+                        final ok = await context.read<ProfileProvider>().cancelAccountDeletion();
+                        if (context.mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text(ok ? "Suppression annulée." : "Impossible d'annuler.")),
+                          );
+                        }
+                      },
+                      child: const Text("Annuler la suppression"),
+                    ),
+                  ],
+                ),
+              ),
+
+            // ---- Couverture façon Facebook ----
+            Stack(
+              children: [
+                Container(
+                  height: 160,
+                  width: double.infinity,
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                    image: coverUrl != null ? DecorationImage(image: NetworkImage(coverUrl), fit: BoxFit.cover) : null,
                   ),
-                  Positioned(
-                    bottom: 0,
-                    right: 0,
-                    child: InkWell(
-                      onTap: _pickPhoto,
-                      borderRadius: BorderRadius.circular(20),
-                      child: Container(
-                        padding: const EdgeInsets.all(8),
-                        decoration: BoxDecoration(
-                          color: Theme.of(context).colorScheme.primary,
-                          shape: BoxShape.circle,
+                  child: coverUrl == null
+                      ? Center(child: Icon(Icons.image_outlined, size: 40, color: Theme.of(context).disabledColor))
+                      : null,
+                ),
+                Positioned(
+                  right: 8,
+                  bottom: 8,
+                  child: Row(children: [
+                    _CircleActionButton(icon: Icons.camera_alt, onTap: _pickCover, tooltip: "Changer la couverture"),
+                    if (coverUrl != null) ...[
+                      const SizedBox(width: 8),
+                      _CircleActionButton(
+                        icon: Icons.delete_outline,
+                        onTap: () => context.read<ProfileProvider>().removeCover(),
+                        tooltip: "Supprimer la couverture",
+                      ),
+                    ],
+                  ]),
+                ),
+                Positioned(
+                  left: 16,
+                  bottom: -44,
+                  child: Stack(
+                    children: [
+                      CircleAvatar(
+                        radius: 48,
+                        backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+                        child: CircleAvatar(
+                          radius: 44,
+                          backgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest,
+                          backgroundImage: avatarUrl != null ? NetworkImage(avatarUrl) : null,
+                          child: avatarUrl == null ? const Icon(Icons.person, size: 44) : null,
                         ),
-                        child: const Icon(Icons.camera_alt, size: 18, color: Colors.white),
+                      ),
+                      Positioned(
+                        bottom: 0,
+                        right: 0,
+                        child: _CircleActionButton(icon: Icons.camera_alt, onTap: _pickAvatar, tooltip: "Changer la photo", small: true),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 56),
+            if (avatarUrl != null)
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Align(
+                  alignment: Alignment.centerRight,
+                  child: TextButton(
+                    onPressed: () => context.read<ProfileProvider>().removeAvatar(),
+                    child: const Text("Supprimer la photo", style: TextStyle(color: Colors.redAccent)),
+                  ),
+                ),
+              ),
+
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Column(
+                children: [
+                  TextField(
+                    controller: _nameCtrl,
+                    maxLength: 40,
+                    decoration: const InputDecoration(
+                      labelText: "Nom affiché",
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: _bioCtrl,
+                    maxLength: 140,
+                    maxLines: 3,
+                    decoration: const InputDecoration(
+                      labelText: "Bio / statut",
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  SizedBox(
+                    width: double.infinity,
+                    child: FilledButton.icon(
+                      icon: provider.saving
+                          ? const SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                            )
+                          : const Icon(Icons.save),
+                      label: const Text("Enregistrer"),
+                      onPressed: provider.saving ? null : () => _save(context),
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+                  const Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      "Ce nom, cette bio et ces photos sont visibles par tous les pairs "
+                      "connectés au réseau — ce n'est pas une information privée.",
+                      style: TextStyle(fontSize: 12, color: Colors.grey),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  MyIdCard(myId: provider.myAddress),
+                  const SizedBox(height: 24),
+
+                  // --- Simulateur réseau multi-nœuds (port de index.html) ---
+                  Card(
+                    child: ListTile(
+                      leading: const Icon(Icons.hub_outlined),
+                      title: const Text("Simulateur réseau multi-nœuds"),
+                      subtitle: const Text("Bac à sable DAG · chaos engine · marché OTC · gossip"),
+                      trailing: const Icon(Icons.chevron_right),
+                      onTap: () => Navigator.of(context).push(
+                        MaterialPageRoute(builder: (_) => const SimulatorScreen()),
                       ),
                     ),
                   ),
+                  const SizedBox(height: 24),
+
+                  // --- Wallet(s) ---
+                  _WalletSection(),
+                  const SizedBox(height: 12),
+
+                  // --- Pairs connectés ---
+                  _PeersSection(),
+                  const SizedBox(height: 24),
+
+                  // --- Zone dangereuse ---
+                  if (deletion?.isPendingDeletion != true)
+                    Card(
+                      color: Colors.red.withValues(alpha: 0.06),
+                      child: ListTile(
+                        leading: const Icon(Icons.delete_forever, color: Colors.redAccent),
+                        title: const Text("Supprimer mon compte"),
+                        subtitle: const Text("Suppression différée de 30 jours, annulable en se reconnectant."),
+                        onTap: () => _confirmDeleteAccount(context),
+                      ),
+                    ),
+                  const SizedBox(height: 24),
                 ],
               ),
             ),
-            const SizedBox(height: 8),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                TextButton(onPressed: _pickPhoto, child: const Text("Changer la photo")),
-                if (hasPhoto)
-                  TextButton(
-                    onPressed: () => context.read<ProfileProvider>().removePhoto(),
-                    child: const Text("Supprimer", style: TextStyle(color: Colors.redAccent)),
-                  ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: _nameCtrl,
-              maxLength: 40,
-              decoration: const InputDecoration(
-                labelText: "Nom affiché",
-                border: OutlineInputBorder(),
-              ),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _bioCtrl,
-              maxLength: 140,
-              maxLines: 3,
-              decoration: const InputDecoration(
-                labelText: "Bio / statut",
-                border: OutlineInputBorder(),
-              ),
-            ),
-            const SizedBox(height: 12),
-            SizedBox(
-              width: double.infinity,
-              child: FilledButton.icon(
-                icon: provider.saving
-                    ? const SizedBox(
-                        width: 16,
-                        height: 16,
-                        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                      )
-                    : const Icon(Icons.save),
-                label: const Text("Enregistrer et diffuser"),
-                onPressed: provider.saving ? null : () => _save(context),
-              ),
-            ),
-            const SizedBox(height: 24),
-            const Text(
-              "Ce nom, cette bio et cette photo sont visibles par tous les pairs "
-              "connectés au réseau — ce n'est pas une information privée.",
-              style: TextStyle(fontSize: 12, color: Colors.grey),
-            ),
-            const SizedBox(height: 16),
-            MyIdCard(myId: provider.myAddress),
-            const SizedBox(height: 24),
-
-            // --- Simulateur réseau multi-nœuds (port de index.html) ---
-            Card(
-              child: ListTile(
-                leading: const Icon(Icons.hub_outlined),
-                title: const Text("Simulateur réseau multi-nœuds"),
-                subtitle: const Text("Bac à sable DAG · chaos engine · marché OTC · gossip"),
-                trailing: const Icon(Icons.chevron_right),
-                onTap: () => Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => const SimulatorScreen()),
-                ),
-              ),
-            ),
-            const SizedBox(height: 24),
-
-            // --- Wallet(s) ---
-            _WalletSection(),
-            const SizedBox(height: 12),
-
-            // --- Pairs connectés ---
-            _PeersSection(),
-            const SizedBox(height: 24),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class _CircleActionButton extends StatelessWidget {
+  final IconData icon;
+  final VoidCallback onTap;
+  final String tooltip;
+  final bool small;
+  const _CircleActionButton({required this.icon, required this.onTap, required this.tooltip, this.small = false});
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: tooltip,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(20),
+        child: Container(
+          padding: EdgeInsets.all(small ? 8 : 6),
+          decoration: BoxDecoration(
+            color: Theme.of(context).colorScheme.primary,
+            shape: BoxShape.circle,
+            border: Border.all(color: Theme.of(context).scaffoldBackgroundColor, width: 2),
+          ),
+          child: Icon(icon, size: small ? 18 : 16, color: Colors.white),
         ),
       ),
     );
