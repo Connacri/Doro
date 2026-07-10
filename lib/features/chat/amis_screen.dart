@@ -7,6 +7,7 @@ import '../network/qr_scan_screen.dart';
 import '../network/my_id_card.dart';
 import '../profile/profile_provider.dart';
 import '../profile/peer_profile_screen.dart';
+import '../../shared/widgets/supabase_unavailable_view.dart';
 
 /// Centre de gestion des contacts, façon grandes messageries :
 /// - Demandes reçues (accepter/refuser)
@@ -48,7 +49,9 @@ class _AmisScreenState extends State<AmisScreen> {
     if (!context.mounted || result == null) return;
 
     if (result == "myid") {
-      showDialog(context: context, builder: (_) => Dialog(child: Padding(padding: const EdgeInsets.all(16), child: MyIdCard(myId: chat.myId))));
+      final myId = chat.myId;
+      if (myId == null) return;
+      showDialog(context: context, builder: (_) => Dialog(child: Padding(padding: const EdgeInsets.all(16), child: MyIdCard(myId: myId))));
       return;
     }
 
@@ -143,6 +146,9 @@ class _AmisScreenState extends State<AmisScreen> {
   @override
   Widget build(BuildContext context) {
     final provider = context.watch<ChatProvider>();
+    if (!provider.available) {
+      return Scaffold(appBar: AppBar(title: const Text("Contacts")), body: const SupabaseUnavailableView());
+    }
     final received = provider.receivedRequests;
     final sent = provider.sentRequests;
     final friends = provider.friends;

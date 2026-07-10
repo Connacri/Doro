@@ -6,6 +6,7 @@ import '../../shared/extensions/string_ext.dart';
 import 'chat_provider.dart';
 import 'widgets/chat_animations.dart';
 import '../profile/peer_profile_screen.dart';
+import '../../shared/widgets/supabase_unavailable_view.dart';
 
 class ChatScreen extends StatefulWidget {
   final String peerId;
@@ -150,6 +151,9 @@ class _ChatScreenState extends State<ChatScreen> {
   @override
   Widget build(BuildContext context) {
     final provider = context.watch<ChatProvider>();
+    if (!provider.available) {
+      return Scaffold(appBar: AppBar(title: Text(widget.peerName)), body: const SupabaseUnavailableView());
+    }
     final messages = provider.messagesWith(widget.peerId);
     final online = provider.isOnline(widget.peerId);
     final typing = provider.isTyping(widget.peerId);

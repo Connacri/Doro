@@ -9,6 +9,7 @@ import '../wallet/wallet_screen.dart';
 import '../../core/wallet/genesis.dart';
 import '../chat/chat_screen.dart';
 import '../simulator/simulator_screen.dart';
+import '../../core/supabase/supabase_bootstrap.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -38,6 +39,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Future<void> _pickAvatar() async {
+    if (!context.read<ProfileProvider>().available) {
+      _showUnavailableSnack();
+      return;
+    }
     try {
       await context.read<ProfileProvider>().pickAvatar();
     } catch (e) {
@@ -49,6 +54,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Future<void> _pickCover() async {
+    if (!context.read<ProfileProvider>().available) {
+      _showUnavailableSnack();
+      return;
+    }
     try {
       await context.read<ProfileProvider>().pickCover();
     } catch (e) {
@@ -59,7 +68,21 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
   }
 
+  void _showUnavailableSnack() {
+    final bootstrap = context.read<SupabaseBootstrap>();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(bootstrap.errorMessage ?? "Profil indisponible pour le moment."),
+        action: SnackBarAction(label: "Réessayer", onPressed: () => bootstrap.retry()),
+      ),
+    );
+  }
+
   Future<void> _save(BuildContext context) async {
+    if (!context.read<ProfileProvider>().available) {
+      _showUnavailableSnack();
+      return;
+    }
     await context.read<ProfileProvider>().saveNameAndBio(
           name: _nameCtrl.text,
           bio: _bioCtrl.text,
@@ -74,6 +97,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
   /// annulable en se reconnectant avant cette date — voir
   /// ProfileService.requestAccountDeletion().
   Future<void> _confirmDeleteAccount(BuildContext context) async {
+    if (!context.read<ProfileProvider>().available) {
+      _showUnavailableSnack();
+      return;
+    }
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -95,7 +122,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
     if (confirmed != true || !context.mounted) return;
     final date = await context.read<ProfileProvider>().requestAccountDeletion();
-    if (!context.mounted) return;
+    if (!context.mounted || date == null) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text("Compte programmé pour suppression le ${_formatDate(date)}."),
@@ -120,6 +147,29 @@ class _ProfileScreenState extends State<ProfileScreen> {
         child: ListView(
           padding: EdgeInsets.zero,
           children: [
+            if (!provider.available)
+              Container(
+                width: double.infinity,
+                color: Colors.orange.shade900,
+                padding: const EdgeInsets.all(12),
+                child: Row(
+                  children: [
+                    const Icon(Icons.cloud_off, color: Colors.white, size: 18),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        provider.unavailableReason ?? "Profil (photos, nom, bio) indisponible pour le moment.",
+                        style: const TextStyle(color: Colors.white, fontSize: 12),
+                      ),
+                    ),
+                    TextButton(
+                      style: TextButton.styleFrom(foregroundColor: Colors.white, backgroundColor: Colors.white24),
+                      onPressed: () => context.read<SupabaseBootstrap>().retry(),
+                      child: const Text("Réessayer"),
+                    ),
+                  ],
+                ),
+              ),
             if (deletion?.isPendingDeletion == true)
               Container(
                 width: double.infinity,

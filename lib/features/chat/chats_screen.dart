@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import 'chat_provider.dart';
 import 'chat_screen.dart';
 import 'amis_screen.dart';
+import '../../shared/widgets/supabase_unavailable_view.dart';
 
 /// Écran d'accueil de la messagerie : toutes les discussions (amis +
 /// pairs avec qui j'ai déjà échangé), triées par message le plus
@@ -24,6 +25,12 @@ class ChatsScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final provider = context.watch<ChatProvider>();
+    if (!provider.available) {
+      return Scaffold(
+        appBar: AppBar(title: const Text("Discussions")),
+        body: const SupabaseUnavailableView(),
+      );
+    }
     final conversations = provider.conversations;
     final pendingCount = provider.receivedRequests.length;
 
