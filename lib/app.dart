@@ -21,6 +21,7 @@ import 'core/supabase/supabase_bootstrap.dart';
 import 'features/market/market_provider.dart';
 import 'features/profile/profile_provider.dart';
 import 'features/profile/profile_screen.dart';
+import 'features/boot/boot_terminal_screen.dart';
 
 /// Point d'entrée de l'app. IMPORTANT : le rendu de l'UI ne dépend QUE
 /// de `_node` (le P2PNode — wallet/DAG/marché/réseau), qui s'initialise
@@ -39,6 +40,7 @@ class DoroApp extends StatefulWidget {
 class _DoroAppState extends State<DoroApp> with WidgetsBindingObserver {
   P2PNode? _node;
   SupabaseBootstrap? _supabaseBootstrap;
+  bool _bootDone = false;
   late final WalletRepository _walletRepo;
 
   @override
@@ -85,6 +87,7 @@ class _DoroAppState extends State<DoroApp> with WidgetsBindingObserver {
     // afficher l'app — on ne l'attend JAMAIS après Supabase.
     _node = node;
     _supabaseBootstrap = SupabaseBootstrap(identity: identity, db: widget.db);
+    Logger.info("Cœur local prêt (wallet, DAG, marché) — affichage de l'app.");
     if (!mounted) return;
     setState(() {});
 
@@ -105,10 +108,19 @@ class _DoroAppState extends State<DoroApp> with WidgetsBindingObserver {
   Widget build(BuildContext context) {
     final node = _node;
     final bootstrap = _supabaseBootstrap;
-    if (node == null || bootstrap == null) {
-      return const MaterialApp(
+
+    // Tant que le cœur local (P2PNode) n'est pas prêt, ou tant que
+    // l'utilisateur n'a pas confirmé/laissé filer le délai auto sur
+    // l'écran terminal, on affiche le journal de démarrage en direct —
+    // jamais un simple spinner muet.
+    if (node == null || bootstrap == null || !_bootDone) {
+      return MaterialApp(
         debugShowCheckedModeBanner: false,
-        home: Scaffold(body: Center(child: CircularProgressIndicator())),
+        theme: ThemeData(brightness: Brightness.dark, useMaterial3: true),
+        home: BootTerminalScreen(
+          ready: node != null && bootstrap != null,
+          onContinue: () => setState(() => _bootDone = true),
+        ),
       );
     }
 

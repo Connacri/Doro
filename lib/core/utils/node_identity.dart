@@ -1,6 +1,7 @@
 import 'package:cryptography/cryptography.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../wallet/address_generator.dart';
+import 'logger.dart';
 
 /// Identité cryptographique persistante du node local — distincte des
 /// wallets (le node garde la même identité même s'il crée ou importe
@@ -37,21 +38,26 @@ class NodeIdentity {
   static const _storage = FlutterSecureStorage();
 
   static Future<NodeIdentityKeyPair> getOrCreate() async {
+    Logger.info("Lecture de l'identité locale (secure storage)…");
     final existingHex = await _storage.read(key: _seedKey);
     final SimpleKeyPair keyPair;
 
     if (existingHex != null && existingHex.isNotEmpty) {
+      Logger.info("Identité existante trouvée, restauration de la paire Ed25519…");
       final seed = _hexToBytes(existingHex);
       keyPair = await Ed25519().newKeyPairFromSeed(seed);
     } else {
+      Logger.info("Aucune identité existante — génération d'une nouvelle paire Ed25519…");
       keyPair = await Ed25519().newKeyPair();
       final seed = await keyPair.extractPrivateKeyBytes();
       await _storage.write(key: _seedKey, value: _bytesToHex(seed));
+      Logger.info("Nouvelle identité générée et sauvegardée.");
     }
 
     final publicKey = await keyPair.extractPublicKey();
     final pubKeyHex = _bytesToHex(publicKey.bytes);
     final nodeId = AddressGenerator.generate(pubKeyHex);
+    Logger.info("Identité prête : $nodeId");
 
     return NodeIdentityKeyPair(
       nodeId: nodeId,

@@ -64,19 +64,23 @@ class SupabaseBootstrap extends ChangeNotifier {
     status = SupabaseBootstrapStatus.initializing;
     errorMessage = null;
     notifyListeners();
+    Logger.info("Connexion à Supabase (${SupabaseConfig.url})…");
 
     try {
       if (!_clientInitialized) {
         await Supabase.initialize(url: SupabaseConfig.url, anonKey: SupabaseConfig.anonKey)
             .timeout(_bindTimeout);
         _clientInitialized = true;
+        Logger.info("Client Supabase initialisé.");
       }
       final supabase = Supabase.instance.client;
 
+      Logger.info("Liaison de l'identité (session anonyme + signature Ed25519)…");
       final identityService = SupabaseIdentityService(supabase, CryptoService());
       await identityService
           .ensureBound(publicKeyHex: identity.nodeId, keyPair: identity.keyPair)
           .timeout(_bindTimeout);
+      Logger.info("Identité liée côté serveur.");
 
       messenger = SupabaseMessengerKernel(nodeId: identity.nodeId, supabase: supabase, db: db);
       presence = PresenceService(supabase, identity.nodeId)..start();
