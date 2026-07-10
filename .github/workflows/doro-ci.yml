@@ -114,11 +114,14 @@ jobs:
           else
             echo "WARNING: No keystore secret found. Build will use debug signing."
           fi
-      - name: Build APK (universal)
+
+      - name: Build APK (universal) with Supabase config
         run: |
           flutter build apk --release \
             --build-name=${{ needs.version.outputs.version }} \
-            --build-number=${{ github.run_number }}
+            --build-number=${{ github.run_number }} \
+            --dart-define=SUPABASE_URL=${{ secrets.SUPABASE_URL }} \
+            --dart-define=SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }}
 
       - name: Prepare artifacts
         run: |
@@ -153,12 +156,14 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
-      - name: Build Windows
+      - name: Build Windows with Supabase config
         shell: pwsh
         run: |
           flutter build windows --release `
             --build-name=${{ needs.version.outputs.version }} `
-            --build-number=${{ github.run_number }}
+            --build-number=${{ github.run_number }} `
+            --dart-define=SUPABASE_URL=${{ secrets.SUPABASE_URL }} `
+            --dart-define=SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }}
 
       - name: Package portable ZIP
         shell: pwsh
