@@ -114,8 +114,7 @@ jobs:
           else
             echo "WARNING: No keystore secret found. Build will use debug signing."
           fi
-
-      - name: Build APK (universal) with Supabase config
+      - name: Build APK (universal)
         run: |
           flutter build apk --release \
             --build-name=${{ needs.version.outputs.version }} \
@@ -156,7 +155,7 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
-      - name: Build Windows with Supabase config
+      - name: Build Windows
         shell: pwsh
         run: |
           flutter build windows --release `
