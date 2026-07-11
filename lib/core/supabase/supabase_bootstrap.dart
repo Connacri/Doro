@@ -70,8 +70,16 @@ class SupabaseBootstrap extends ChangeNotifier {
 
     try {
       if (!_clientInitialized) {
-        await Supabase.initialize(url: SupabaseConfig.url, anonKey: SupabaseConfig.anonKey)
-            .timeout(_bindTimeout);
+        bool alreadyInitialized = false;
+        try {
+          Supabase.instance.client;
+          alreadyInitialized = true;
+        } catch (_) {}
+
+        if (!alreadyInitialized) {
+          await Supabase.initialize(url: SupabaseConfig.url, anonKey: SupabaseConfig.anonKey)
+              .timeout(_bindTimeout);
+        }
         _clientInitialized = true;
         Logger.info("Client Supabase initialisé.");
       }
