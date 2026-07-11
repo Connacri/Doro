@@ -846,8 +846,6 @@ class _WalletSection extends StatelessWidget {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Wallet(s) vide(s) retiré(s).")));
     }
   }
-    );
-  }
 }
 
 class _PeersSection extends StatelessWidget {
