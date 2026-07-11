@@ -109,6 +109,25 @@ class WalletProvider extends ChangeNotifier {
   ///     même wallet ne re-crédite pas si le solde n'est déjà plus zéro).
   ///     Personne d'autre ne peut obtenir ce crédit : il faut posséder la
   ///     clé privée exacte, jamais partagée nulle part dans le code.
+  /// Retire un wallet LOCAL (jamais le réseau/DAG partagé). Refuse par
+  /// défaut si son solde n'est pas nul, pour ne jamais faire perdre des
+  /// fonds par un clic malheureux — l'appelant doit explicitement passer
+  /// `force: true` après confirmation utilisateur ET après avoir montré
+  /// le solde exact qui sera perdu de vue localement (les fonds restent
+  /// récupérables tant que la seed est sauvegardée : ce n'est qu'un
+  /// retrait de la liste affichée sur cet appareil, pas une suppression
+  /// on-chain).
+  Future<bool> removeWallet(String address, {bool force = false}) async {
+    final wallet = core.get(address);
+    if (wallet == null) return false;
+    if (wallet.balance > BigInt.zero && !force) return false;
+    core.remove(address);
+    await repo.removeByAddress(address);
+    await KeypairStore.delete(address);
+    notifyListeners();
+    return true;
+  }
+
   Future<Wallet> importWallet(String privateKeySeedHex) async {
     final seed = _hexToBytes(privateKeySeedHex.trim());
     if (seed.length != 32) {

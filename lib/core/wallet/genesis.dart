@@ -19,9 +19,10 @@
 /// pairs l'acceptent et créditent localement le wallet fondateur.
 class Genesis {
   /// Adresse du wallet fondateur/trésorerie (Ramzi). Dérivée par
-  /// sha256(clé publique) — voir AddressGenerator.generate().
+  /// Ed25519 depuis la seed fondatrice — voir tool/derive_genesis_address.dart
+  /// pour la re-générer/vérifier à partir de la seed (jamais commitée).
   static const String genesisAddress =
-      "0x651440eec083b10d7e5c35688529a0398eae88b6e2cfaba904bcc8d3283ba513";
+      "0x81042820de64b3ca3245079297c19753ea7edef9c9c1c72bf778cc4fc6666ae4";
 
   /// Adresse "émettrice" de la transaction genesis — représente le réseau
   /// lui-même (mint). Aucune clé privée ne correspond à cette adresse,

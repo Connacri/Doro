@@ -19,6 +19,14 @@ class WalletCore {
     _wallets[wallet.address] = wallet;
   }
 
+  /// Retire un wallet de la mémoire locale (ne touche ni au réseau ni au
+  /// DAG partagé — seulement à la liste de wallets suivis sur cet
+  /// appareil). Voir `WalletProvider.removeWallet` pour les garde-fous
+  /// (jamais de suppression silencieuse d'un wallet non vide).
+  void remove(String address) {
+    _wallets.remove(address);
+  }
+
   Wallet? get(String address) => _wallets[address];
 
   List<Wallet> all() => _wallets.values.toList();
