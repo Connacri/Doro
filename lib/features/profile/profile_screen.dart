@@ -328,18 +328,23 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
                         _SectionCard(
                           padding: EdgeInsets.zero,
-                          child: ListTile(
-                            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-                            leading: Container(
-                              padding: const EdgeInsets.all(8),
-                              decoration: BoxDecoration(color: AppColors.primary.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(10)),
-                              child: const Icon(Icons.hub_outlined, color: AppColors.primary),
-                            ),
-                            title: const Text("Simulateur réseau multi-nœuds", style: TextStyle(fontWeight: FontWeight.w600)),
-                            subtitle: const Text("Bac à sable DAG · chaos engine · marché OTC · gossip", style: TextStyle(fontSize: 12)),
-                            trailing: const Icon(Icons.chevron_right, color: Colors.white38),
-                            onTap: () => Navigator.of(context).push(
-                              MaterialPageRoute(builder: (_) => const SimulatorScreen()),
+                          child: Material(
+                            color: Colors.transparent,
+                            borderRadius: BorderRadius.circular(20),
+                            clipBehavior: Clip.antiAlias,
+                            child: ListTile(
+                              contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                              leading: Container(
+                                padding: const EdgeInsets.all(8),
+                                decoration: BoxDecoration(color: AppColors.primary.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(10)),
+                                child: const Icon(Icons.hub_outlined, color: AppColors.primary),
+                              ),
+                              title: const Text("Simulateur réseau multi-nœuds", style: TextStyle(fontWeight: FontWeight.w600)),
+                              subtitle: const Text("Bac à sable DAG · chaos engine · marché OTC · gossip", style: TextStyle(fontSize: 12)),
+                              trailing: const Icon(Icons.chevron_right, color: Colors.white38),
+                              onTap: () => Navigator.of(context).push(
+                                MaterialPageRoute(builder: (_) => const SimulatorScreen()),
+                              ),
                             ),
                           ),
                         ),
@@ -356,16 +361,21 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           _SectionCard(
                             padding: EdgeInsets.zero,
                             border: Colors.redAccent.withValues(alpha: 0.25),
-                            child: ListTile(
-                              contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-                              leading: Container(
-                                padding: const EdgeInsets.all(8),
-                                decoration: BoxDecoration(color: Colors.redAccent.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(10)),
-                                child: const Icon(Icons.delete_forever, color: Colors.redAccent),
+                            child: Material(
+                              color: Colors.transparent,
+                              borderRadius: BorderRadius.circular(20),
+                              clipBehavior: Clip.antiAlias,
+                              child: ListTile(
+                                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                                leading: Container(
+                                  padding: const EdgeInsets.all(8),
+                                  decoration: BoxDecoration(color: Colors.redAccent.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(10)),
+                                  child: const Icon(Icons.delete_forever, color: Colors.redAccent),
+                                ),
+                                title: const Text("Supprimer mon compte", style: TextStyle(fontWeight: FontWeight.w600)),
+                                subtitle: const Text("Suppression différée de 30 jours, annulable en se reconnectant.", style: TextStyle(fontSize: 12)),
+                                onTap: () => _confirmDeleteAccount(context),
                               ),
-                              title: const Text("Supprimer mon compte", style: TextStyle(fontWeight: FontWeight.w600)),
-                              subtitle: const Text("Suppression différée de 30 jours, annulable en se reconnectant.", style: TextStyle(fontSize: 12)),
-                              onTap: () => _confirmDeleteAccount(context),
                             ),
                           ),
                         const SizedBox(height: 24),
