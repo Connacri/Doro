@@ -51,6 +51,11 @@ class WalletRepository {
     _box.removeAll();
   }
 
+  Future<void> removeByAddress(String address) async {
+    final existing = _box.query(WalletEntity_.address.equals(address)).build().findFirst();
+    if (existing != null) _box.remove(existing.id);
+  }
+
   Future<void> load() async {
     // No-op for ObjectBox
   }

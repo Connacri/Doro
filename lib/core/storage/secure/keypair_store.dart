@@ -28,6 +28,13 @@ class KeypairStore {
     await _storage.deleteAll();
   }
 
+  /// Retire la clé privée d'une seule adresse, sans toucher aux autres
+  /// wallets stockés — `clearAll()` est trop large pour ce cas d'usage
+  /// (suppression d'un seul wallet local).
+  static Future<void> delete(String address) async {
+    await _storage.delete(key: '$_prefix$address');
+  }
+
   static Future<SimpleKeyPair?> load(String address) async {
     final hex = await _storage.read(key: '$_prefix$address');
     if (hex == null || hex.isEmpty) return null;

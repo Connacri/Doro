@@ -772,7 +772,7 @@ class _WalletSection extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text("Colle ta seed (64 caractères hex). Ne la partage jamais.",
+            const Text("Colle ta seed (64 caractères hex). Ne la partage jamais — et ne la colle jamais dans un chat.",
                 style: TextStyle(fontSize: 13, color: Colors.grey)),
             const SizedBox(height: 12),
             TextField(controller: controller, obscureText: true,
@@ -787,9 +787,18 @@ class _WalletSection extends StatelessWidget {
               final seed = controller.text.trim();
               if (seed.isEmpty) return;
               Navigator.of(ctx).pop();
+              final walletProv = context.read<WalletProvider>();
               try {
-                await context.read<WalletProvider>().importWallet(seed);
-                if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Wallet importé")));
+                final wallet = await walletProv.importWallet(seed);
+                if (!context.mounted) return;
+                final isFounder = Genesis.isGenesisAddress(wallet.address);
+                ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                  content: Text(isFounder
+                      ? "Wallet fondateur reconnu — solde : ${formatDoro(wallet.balance)}"
+                      : "Wallet importé — solde : ${formatDoro(wallet.balance)}"),
+                  duration: const Duration(seconds: 4),
+                ));
+                await _offerCleanupIfNeeded(context, keepAddress: wallet.address);
               } catch (e) {
                 if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Import impossible : $e")));
               }
@@ -798,6 +807,45 @@ class _WalletSection extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+
+  /// Après un import réussi, si d'autres wallets locaux sont vides
+  /// (soldes à zéro — typiquement le wallet placeholder créé au tout
+  /// premier lancement), propose de les retirer de la liste pour ne
+  /// garder que le wallet qui vient d'être importé. Ne touche JAMAIS,
+  /// même avec confirmation, à un wallet dont le solde est non nul —
+  /// `WalletProvider.removeWallet` refuse silencieusement ce cas sans
+  /// `force`, et on ne le propose même pas ici.
+  Future<void> _offerCleanupIfNeeded(BuildContext context, {required String keepAddress}) async {
+    if (!context.mounted) return;
+    final walletProv = context.read<WalletProvider>();
+    final redundant = walletProv.wallets.where((w) => w.address != keepAddress && w.balance == BigInt.zero).toList();
+    if (redundant.isEmpty) return;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text("Nettoyer les wallets vides ?"),
+        content: Text(
+          redundant.length == 1
+              ? "Tu as un autre wallet local à solde zéro. Le retirer de la liste sur cet appareil (aucune perte : il n'a aucun fonds)."
+              : "Tu as ${redundant.length} autres wallets locaux à solde zéro. Les retirer de la liste sur cet appareil (aucune perte : ils n'ont aucun fonds).",
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text("Garder")),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text("Nettoyer")),
+        ],
+      ),
+    );
+    if (confirmed != true || !context.mounted) return;
+    for (final w in redundant) {
+      await walletProv.removeWallet(w.address);
+    }
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Wallet(s) vide(s) retiré(s).")));
+    }
+  }
     );
   }
 }
