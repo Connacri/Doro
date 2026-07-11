@@ -38,6 +38,9 @@ android/.kotlin/
 .env.*
 secrets.dart
 lib/**/secrets.dart
+key.txt
+keys.txt
+assets/config.json
 
 # =============================================================================
 # Node.js / Signaling server

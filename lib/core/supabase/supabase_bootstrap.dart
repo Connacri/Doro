@@ -53,6 +53,8 @@ class SupabaseBootstrap extends ChangeNotifier {
   static const _bindTimeout = Duration(seconds: 12);
 
   Future<void> start() async {
+    await SupabaseConfig.initialize();
+
     if (!SupabaseConfig.isConfigured) {
       status = SupabaseBootstrapStatus.unavailable;
       errorMessage = "Configuration Supabase manquante (--dart-define=SUPABASE_URL / SUPABASE_ANON_KEY).";
