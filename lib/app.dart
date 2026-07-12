@@ -22,6 +22,8 @@ import 'features/market/market_provider.dart';
 import 'features/profile/profile_provider.dart';
 import 'features/profile/profile_screen.dart';
 import 'features/boot/boot_terminal_screen.dart';
+import 'features/bet/bet_provider.dart';
+import 'features/bet/bets_list_screen.dart';
 
 /// Point d'entrée de l'app. IMPORTANT : le rendu de l'UI ne dépend QUE
 /// de `_node` (le P2PNode — wallet/DAG/marché/réseau), qui s'initialise
@@ -140,6 +142,14 @@ class _DoroAppState extends State<DoroApp> with WidgetsBindingObserver {
           update: (_, wallet, market) => market!..walletProvider = wallet,
         ),
         ChangeNotifierProvider(create: (_) => ProfileProvider(bootstrap, node.nodeId)),
+        ChangeNotifierProxyProvider<WalletProvider, BetProvider>(
+          create: (_) => BetProvider(node),
+          update: (_, wallet, bet) {
+            bet!.node.betKernel.walletSend = ({required to, required amount}) =>
+                wallet.send(from: node.nodeId, to: to, amount: amount);
+            return bet;
+          },
+        ),
       ],
       child: MaterialApp(
         debugShowCheckedModeBanner: false,
@@ -171,6 +181,7 @@ class _RootState extends State<Root> {
       body: IndexedStack(index: index, children: const [
         HomeScreen(),
         WalletScreen(),
+        BetsListScreen(),
         ChatsScreen(),
         ProfileScreen(),
       ]),
@@ -180,6 +191,7 @@ class _RootState extends State<Root> {
         destinations: [
           const NavigationDestination(icon: Icon(Icons.home), label: "Home"),
           const NavigationDestination(icon: Icon(Icons.wallet), label: "Wallet"),
+          const NavigationDestination(icon: Icon(Icons.emoji_events), label: "Paris"),
           NavigationDestination(
             icon: Badge(isLabelVisible: pendingRequests > 0, label: Text("$pendingRequests"), child: const Icon(Icons.chat_bubble_outline)),
             label: "Discussions",

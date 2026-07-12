@@ -14,6 +14,9 @@ import 'package:objectbox/internal.dart'
 import 'package:objectbox/objectbox.dart' as obx;
 import 'package:objectbox_flutter_libs/objectbox_flutter_libs.dart';
 
+import 'core/storage/entities/bet_entity.dart';
+import 'core/storage/entities/bet_stake_entity.dart';
+import 'core/storage/entities/bet_vote_entity.dart';
 import 'core/storage/entities/chat_message_entity.dart';
 import 'core/storage/entities/contact_entity.dart';
 import 'core/storage/entities/order_entity.dart';
@@ -508,6 +511,269 @@ final _entities = <obx_int.ModelEntity>[
     relations: <obx_int.ModelRelation>[],
     backlinks: <obx_int.ModelBacklink>[],
   ),
+  obx_int.ModelEntity(
+    id: const obx_int.IdUid(10, 1086634880077351573),
+    name: 'BetEntity',
+    lastPropertyId: const obx_int.IdUid(18, 6474833297673803093),
+    flags: 0,
+    properties: <obx_int.ModelProperty>[
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(1, 609119085186232239),
+        name: 'id',
+        type: 6,
+        flags: 1,
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(2, 2821127042528174804),
+        name: 'betId',
+        type: 9,
+        flags: 2080,
+        indexId: const obx_int.IdUid(8, 113938574774478154),
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(3, 4005850453464061287),
+        name: 'creatorId',
+        type: 9,
+        flags: 0,
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(4, 6569888302355237956),
+        name: 'creatorPublicKey',
+        type: 9,
+        flags: 0,
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(5, 1687085815428245847),
+        name: 'title',
+        type: 9,
+        flags: 0,
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(6, 8443347546409228755),
+        name: 'description',
+        type: 9,
+        flags: 0,
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(7, 3126311311578284632),
+        name: 'category',
+        type: 9,
+        flags: 0,
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(8, 8278170976132539754),
+        name: 'optionLabelsCsv',
+        type: 9,
+        flags: 0,
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(9, 3795781124621258614),
+        name: 'minStake',
+        type: 9,
+        flags: 0,
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(10, 724809199084544716),
+        name: 'feeBasisPoints',
+        type: 6,
+        flags: 0,
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(11, 9195770743455418573),
+        name: 'stakingDeadline',
+        type: 6,
+        flags: 0,
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(12, 1543976575685626912),
+        name: 'votingDeadline',
+        type: 6,
+        flags: 0,
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(13, 735689091785634140),
+        name: 'quorumBasisPoints',
+        type: 6,
+        flags: 0,
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(14, 8392680068268202643),
+        name: 'majorityBasisPoints',
+        type: 6,
+        flags: 0,
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(15, 2256044171035414344),
+        name: 'timestamp',
+        type: 6,
+        flags: 0,
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(16, 4546284278571956648),
+        name: 'signature',
+        type: 9,
+        flags: 0,
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(17, 6885069427485180149),
+        name: 'status',
+        type: 9,
+        flags: 0,
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(18, 6474833297673803093),
+        name: 'winningOptionLabel',
+        type: 9,
+        flags: 0,
+      ),
+    ],
+    relations: <obx_int.ModelRelation>[],
+    backlinks: <obx_int.ModelBacklink>[],
+  ),
+  obx_int.ModelEntity(
+    id: const obx_int.IdUid(11, 837624297642086408),
+    name: 'BetStakeEntity',
+    lastPropertyId: const obx_int.IdUid(12, 23809329270852936),
+    flags: 0,
+    properties: <obx_int.ModelProperty>[
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(1, 7874488892404508474),
+        name: 'id',
+        type: 6,
+        flags: 1,
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(2, 993175160376223330),
+        name: 'stakeId',
+        type: 9,
+        flags: 2080,
+        indexId: const obx_int.IdUid(9, 3610881463104182408),
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(3, 6436267172895455461),
+        name: 'betId',
+        type: 9,
+        flags: 2048,
+        indexId: const obx_int.IdUid(10, 1031429534162349770),
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(4, 7233850984142646616),
+        name: 'optionLabel',
+        type: 9,
+        flags: 0,
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(5, 5442789041281296758),
+        name: 'stakerId',
+        type: 9,
+        flags: 0,
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(6, 2027039965654583504),
+        name: 'stakerPublicKey',
+        type: 9,
+        flags: 0,
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(7, 600534303892077065),
+        name: 'amount',
+        type: 9,
+        flags: 0,
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(8, 5729826067864721081),
+        name: 'timestamp',
+        type: 6,
+        flags: 0,
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(9, 9206998928388514509),
+        name: 'signature',
+        type: 9,
+        flags: 0,
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(10, 1756182244488429659),
+        name: 'payoutAmount',
+        type: 9,
+        flags: 0,
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(11, 1992126266290008381),
+        name: 'payoutTxId',
+        type: 9,
+        flags: 0,
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(12, 23809329270852936),
+        name: 'defaulted',
+        type: 1,
+        flags: 0,
+      ),
+    ],
+    relations: <obx_int.ModelRelation>[],
+    backlinks: <obx_int.ModelBacklink>[],
+  ),
+  obx_int.ModelEntity(
+    id: const obx_int.IdUid(12, 8165455256903830067),
+    name: 'BetVoteEntity',
+    lastPropertyId: const obx_int.IdUid(8, 7039933571921166103),
+    flags: 0,
+    properties: <obx_int.ModelProperty>[
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(1, 8140504261210178972),
+        name: 'id',
+        type: 6,
+        flags: 1,
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(2, 2522193336915751013),
+        name: 'voteId',
+        type: 9,
+        flags: 2080,
+        indexId: const obx_int.IdUid(11, 3944886030916819879),
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(3, 8683963749048829489),
+        name: 'betId',
+        type: 9,
+        flags: 2048,
+        indexId: const obx_int.IdUid(12, 8786083299139181807),
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(4, 4431368755804177076),
+        name: 'voterId',
+        type: 9,
+        flags: 0,
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(5, 7984286378887203332),
+        name: 'voterPublicKey',
+        type: 9,
+        flags: 0,
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(6, 2114060536786444961),
+        name: 'votedOptionLabel',
+        type: 9,
+        flags: 0,
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(7, 7507969529584279692),
+        name: 'timestamp',
+        type: 6,
+        flags: 0,
+      ),
+      obx_int.ModelProperty(
+        id: const obx_int.IdUid(8, 7039933571921166103),
+        name: 'signature',
+        type: 9,
+        flags: 0,
+      ),
+    ],
+    relations: <obx_int.ModelRelation>[],
+    backlinks: <obx_int.ModelBacklink>[],
+  ),
 ];
 
 /// Shortcut for [obx.Store.new] that passes [getObjectBoxModel] and for Flutter
@@ -553,8 +819,8 @@ obx_int.ModelDefinition getObjectBoxModel() {
     // Typically, this is done with `dart run build_runner build`.
     generatorVersion: obx_int.GeneratorVersion.v2025_12_16,
     entities: _entities,
-    lastEntityId: const obx_int.IdUid(9, 5143334093504545345),
-    lastIndexId: const obx_int.IdUid(7, 183303440657801944),
+    lastEntityId: const obx_int.IdUid(12, 8165455256903830067),
+    lastIndexId: const obx_int.IdUid(12, 8786083299139181807),
     lastRelationId: const obx_int.IdUid(0, 0),
     lastSequenceId: const obx_int.IdUid(0, 0),
     retiredEntityUids: const [],
@@ -1191,6 +1457,330 @@ obx_int.ModelDefinition getObjectBoxModel() {
         return object;
       },
     ),
+    BetEntity: obx_int.EntityDefinition<BetEntity>(
+      model: _entities[9],
+      toOneRelations: (BetEntity object) => [],
+      toManyRelations: (BetEntity object) => {},
+      getId: (BetEntity object) => object.id,
+      setId: (BetEntity object, int id) {
+        object.id = id;
+      },
+      objectToFB: (BetEntity object, fb.Builder fbb) {
+        final betIdOffset = fbb.writeString(object.betId);
+        final creatorIdOffset = fbb.writeString(object.creatorId);
+        final creatorPublicKeyOffset = fbb.writeString(object.creatorPublicKey);
+        final titleOffset = fbb.writeString(object.title);
+        final descriptionOffset = fbb.writeString(object.description);
+        final categoryOffset = fbb.writeString(object.category);
+        final optionLabelsCsvOffset = fbb.writeString(object.optionLabelsCsv);
+        final minStakeOffset = fbb.writeString(object.minStake);
+        final signatureOffset = fbb.writeString(object.signature);
+        final statusOffset = fbb.writeString(object.status);
+        final winningOptionLabelOffset = object.winningOptionLabel == null
+            ? null
+            : fbb.writeString(object.winningOptionLabel!);
+        fbb.startTable(19);
+        fbb.addInt64(0, object.id);
+        fbb.addOffset(1, betIdOffset);
+        fbb.addOffset(2, creatorIdOffset);
+        fbb.addOffset(3, creatorPublicKeyOffset);
+        fbb.addOffset(4, titleOffset);
+        fbb.addOffset(5, descriptionOffset);
+        fbb.addOffset(6, categoryOffset);
+        fbb.addOffset(7, optionLabelsCsvOffset);
+        fbb.addOffset(8, minStakeOffset);
+        fbb.addInt64(9, object.feeBasisPoints);
+        fbb.addInt64(10, object.stakingDeadline);
+        fbb.addInt64(11, object.votingDeadline);
+        fbb.addInt64(12, object.quorumBasisPoints);
+        fbb.addInt64(13, object.majorityBasisPoints);
+        fbb.addInt64(14, object.timestamp);
+        fbb.addOffset(15, signatureOffset);
+        fbb.addOffset(16, statusOffset);
+        fbb.addOffset(17, winningOptionLabelOffset);
+        fbb.finish(fbb.endTable());
+        return object.id;
+      },
+      objectFromFB: (obx.Store store, ByteData fbData) {
+        final buffer = fb.BufferContext(fbData);
+        final rootOffset = buffer.derefObject(0);
+        final idParam = const fb.Int64Reader().vTableGet(
+          buffer,
+          rootOffset,
+          4,
+          0,
+        );
+        final betIdParam = const fb.StringReader(
+          asciiOptimization: true,
+        ).vTableGet(buffer, rootOffset, 6, '');
+        final creatorIdParam = const fb.StringReader(
+          asciiOptimization: true,
+        ).vTableGet(buffer, rootOffset, 8, '');
+        final creatorPublicKeyParam = const fb.StringReader(
+          asciiOptimization: true,
+        ).vTableGet(buffer, rootOffset, 10, '');
+        final titleParam = const fb.StringReader(
+          asciiOptimization: true,
+        ).vTableGet(buffer, rootOffset, 12, '');
+        final descriptionParam = const fb.StringReader(
+          asciiOptimization: true,
+        ).vTableGet(buffer, rootOffset, 14, '');
+        final categoryParam = const fb.StringReader(
+          asciiOptimization: true,
+        ).vTableGet(buffer, rootOffset, 16, '');
+        final optionLabelsCsvParam = const fb.StringReader(
+          asciiOptimization: true,
+        ).vTableGet(buffer, rootOffset, 18, '');
+        final minStakeParam = const fb.StringReader(
+          asciiOptimization: true,
+        ).vTableGet(buffer, rootOffset, 20, '');
+        final feeBasisPointsParam = const fb.Int64Reader().vTableGet(
+          buffer,
+          rootOffset,
+          22,
+          0,
+        );
+        final stakingDeadlineParam = const fb.Int64Reader().vTableGet(
+          buffer,
+          rootOffset,
+          24,
+          0,
+        );
+        final votingDeadlineParam = const fb.Int64Reader().vTableGet(
+          buffer,
+          rootOffset,
+          26,
+          0,
+        );
+        final quorumBasisPointsParam = const fb.Int64Reader().vTableGet(
+          buffer,
+          rootOffset,
+          28,
+          0,
+        );
+        final majorityBasisPointsParam = const fb.Int64Reader().vTableGet(
+          buffer,
+          rootOffset,
+          30,
+          0,
+        );
+        final timestampParam = const fb.Int64Reader().vTableGet(
+          buffer,
+          rootOffset,
+          32,
+          0,
+        );
+        final signatureParam = const fb.StringReader(
+          asciiOptimization: true,
+        ).vTableGet(buffer, rootOffset, 34, '');
+        final statusParam = const fb.StringReader(
+          asciiOptimization: true,
+        ).vTableGet(buffer, rootOffset, 36, '');
+        final winningOptionLabelParam = const fb.StringReader(
+          asciiOptimization: true,
+        ).vTableGetNullable(buffer, rootOffset, 38);
+        final object = BetEntity(
+          id: idParam,
+          betId: betIdParam,
+          creatorId: creatorIdParam,
+          creatorPublicKey: creatorPublicKeyParam,
+          title: titleParam,
+          description: descriptionParam,
+          category: categoryParam,
+          optionLabelsCsv: optionLabelsCsvParam,
+          minStake: minStakeParam,
+          feeBasisPoints: feeBasisPointsParam,
+          stakingDeadline: stakingDeadlineParam,
+          votingDeadline: votingDeadlineParam,
+          quorumBasisPoints: quorumBasisPointsParam,
+          majorityBasisPoints: majorityBasisPointsParam,
+          timestamp: timestampParam,
+          signature: signatureParam,
+          status: statusParam,
+          winningOptionLabel: winningOptionLabelParam,
+        );
+
+        return object;
+      },
+    ),
+    BetStakeEntity: obx_int.EntityDefinition<BetStakeEntity>(
+      model: _entities[10],
+      toOneRelations: (BetStakeEntity object) => [],
+      toManyRelations: (BetStakeEntity object) => {},
+      getId: (BetStakeEntity object) => object.id,
+      setId: (BetStakeEntity object, int id) {
+        object.id = id;
+      },
+      objectToFB: (BetStakeEntity object, fb.Builder fbb) {
+        final stakeIdOffset = fbb.writeString(object.stakeId);
+        final betIdOffset = fbb.writeString(object.betId);
+        final optionLabelOffset = fbb.writeString(object.optionLabel);
+        final stakerIdOffset = fbb.writeString(object.stakerId);
+        final stakerPublicKeyOffset = fbb.writeString(object.stakerPublicKey);
+        final amountOffset = fbb.writeString(object.amount);
+        final signatureOffset = fbb.writeString(object.signature);
+        final payoutAmountOffset = object.payoutAmount == null
+            ? null
+            : fbb.writeString(object.payoutAmount!);
+        final payoutTxIdOffset = object.payoutTxId == null
+            ? null
+            : fbb.writeString(object.payoutTxId!);
+        fbb.startTable(13);
+        fbb.addInt64(0, object.id);
+        fbb.addOffset(1, stakeIdOffset);
+        fbb.addOffset(2, betIdOffset);
+        fbb.addOffset(3, optionLabelOffset);
+        fbb.addOffset(4, stakerIdOffset);
+        fbb.addOffset(5, stakerPublicKeyOffset);
+        fbb.addOffset(6, amountOffset);
+        fbb.addInt64(7, object.timestamp);
+        fbb.addOffset(8, signatureOffset);
+        fbb.addOffset(9, payoutAmountOffset);
+        fbb.addOffset(10, payoutTxIdOffset);
+        fbb.addBool(11, object.defaulted);
+        fbb.finish(fbb.endTable());
+        return object.id;
+      },
+      objectFromFB: (obx.Store store, ByteData fbData) {
+        final buffer = fb.BufferContext(fbData);
+        final rootOffset = buffer.derefObject(0);
+        final idParam = const fb.Int64Reader().vTableGet(
+          buffer,
+          rootOffset,
+          4,
+          0,
+        );
+        final stakeIdParam = const fb.StringReader(
+          asciiOptimization: true,
+        ).vTableGet(buffer, rootOffset, 6, '');
+        final betIdParam = const fb.StringReader(
+          asciiOptimization: true,
+        ).vTableGet(buffer, rootOffset, 8, '');
+        final optionLabelParam = const fb.StringReader(
+          asciiOptimization: true,
+        ).vTableGet(buffer, rootOffset, 10, '');
+        final stakerIdParam = const fb.StringReader(
+          asciiOptimization: true,
+        ).vTableGet(buffer, rootOffset, 12, '');
+        final stakerPublicKeyParam = const fb.StringReader(
+          asciiOptimization: true,
+        ).vTableGet(buffer, rootOffset, 14, '');
+        final amountParam = const fb.StringReader(
+          asciiOptimization: true,
+        ).vTableGet(buffer, rootOffset, 16, '');
+        final timestampParam = const fb.Int64Reader().vTableGet(
+          buffer,
+          rootOffset,
+          18,
+          0,
+        );
+        final signatureParam = const fb.StringReader(
+          asciiOptimization: true,
+        ).vTableGet(buffer, rootOffset, 20, '');
+        final payoutAmountParam = const fb.StringReader(
+          asciiOptimization: true,
+        ).vTableGetNullable(buffer, rootOffset, 22);
+        final payoutTxIdParam = const fb.StringReader(
+          asciiOptimization: true,
+        ).vTableGetNullable(buffer, rootOffset, 24);
+        final defaultedParam = const fb.BoolReader().vTableGet(
+          buffer,
+          rootOffset,
+          26,
+          false,
+        );
+        final object = BetStakeEntity(
+          id: idParam,
+          stakeId: stakeIdParam,
+          betId: betIdParam,
+          optionLabel: optionLabelParam,
+          stakerId: stakerIdParam,
+          stakerPublicKey: stakerPublicKeyParam,
+          amount: amountParam,
+          timestamp: timestampParam,
+          signature: signatureParam,
+          payoutAmount: payoutAmountParam,
+          payoutTxId: payoutTxIdParam,
+          defaulted: defaultedParam,
+        );
+
+        return object;
+      },
+    ),
+    BetVoteEntity: obx_int.EntityDefinition<BetVoteEntity>(
+      model: _entities[11],
+      toOneRelations: (BetVoteEntity object) => [],
+      toManyRelations: (BetVoteEntity object) => {},
+      getId: (BetVoteEntity object) => object.id,
+      setId: (BetVoteEntity object, int id) {
+        object.id = id;
+      },
+      objectToFB: (BetVoteEntity object, fb.Builder fbb) {
+        final voteIdOffset = fbb.writeString(object.voteId);
+        final betIdOffset = fbb.writeString(object.betId);
+        final voterIdOffset = fbb.writeString(object.voterId);
+        final voterPublicKeyOffset = fbb.writeString(object.voterPublicKey);
+        final votedOptionLabelOffset = fbb.writeString(object.votedOptionLabel);
+        final signatureOffset = fbb.writeString(object.signature);
+        fbb.startTable(9);
+        fbb.addInt64(0, object.id);
+        fbb.addOffset(1, voteIdOffset);
+        fbb.addOffset(2, betIdOffset);
+        fbb.addOffset(3, voterIdOffset);
+        fbb.addOffset(4, voterPublicKeyOffset);
+        fbb.addOffset(5, votedOptionLabelOffset);
+        fbb.addInt64(6, object.timestamp);
+        fbb.addOffset(7, signatureOffset);
+        fbb.finish(fbb.endTable());
+        return object.id;
+      },
+      objectFromFB: (obx.Store store, ByteData fbData) {
+        final buffer = fb.BufferContext(fbData);
+        final rootOffset = buffer.derefObject(0);
+        final idParam = const fb.Int64Reader().vTableGet(
+          buffer,
+          rootOffset,
+          4,
+          0,
+        );
+        final voteIdParam = const fb.StringReader(
+          asciiOptimization: true,
+        ).vTableGet(buffer, rootOffset, 6, '');
+        final betIdParam = const fb.StringReader(
+          asciiOptimization: true,
+        ).vTableGet(buffer, rootOffset, 8, '');
+        final voterIdParam = const fb.StringReader(
+          asciiOptimization: true,
+        ).vTableGet(buffer, rootOffset, 10, '');
+        final voterPublicKeyParam = const fb.StringReader(
+          asciiOptimization: true,
+        ).vTableGet(buffer, rootOffset, 12, '');
+        final votedOptionLabelParam = const fb.StringReader(
+          asciiOptimization: true,
+        ).vTableGet(buffer, rootOffset, 14, '');
+        final timestampParam = const fb.Int64Reader().vTableGet(
+          buffer,
+          rootOffset,
+          16,
+          0,
+        );
+        final signatureParam = const fb.StringReader(
+          asciiOptimization: true,
+        ).vTableGet(buffer, rootOffset, 18, '');
+        final object = BetVoteEntity(
+          id: idParam,
+          voteId: voteIdParam,
+          betId: betIdParam,
+          voterId: voterIdParam,
+          voterPublicKey: voterPublicKeyParam,
+          votedOptionLabel: votedOptionLabelParam,
+          timestamp: timestampParam,
+          signature: signatureParam,
+        );
+
+        return object;
+      },
+    ),
   };
 
   return obx_int.ModelDefinition(model, bindings);
@@ -1540,5 +2130,204 @@ class ProfileEntity_ {
   /// See [ProfileEntity.updatedAt].
   static final updatedAt = obx.QueryIntegerProperty<ProfileEntity>(
     _entities[8].properties[4],
+  );
+}
+
+/// [BetEntity] entity fields to define ObjectBox queries.
+class BetEntity_ {
+  /// See [BetEntity.id].
+  static final id = obx.QueryIntegerProperty<BetEntity>(
+    _entities[9].properties[0],
+  );
+
+  /// See [BetEntity.betId].
+  static final betId = obx.QueryStringProperty<BetEntity>(
+    _entities[9].properties[1],
+  );
+
+  /// See [BetEntity.creatorId].
+  static final creatorId = obx.QueryStringProperty<BetEntity>(
+    _entities[9].properties[2],
+  );
+
+  /// See [BetEntity.creatorPublicKey].
+  static final creatorPublicKey = obx.QueryStringProperty<BetEntity>(
+    _entities[9].properties[3],
+  );
+
+  /// See [BetEntity.title].
+  static final title = obx.QueryStringProperty<BetEntity>(
+    _entities[9].properties[4],
+  );
+
+  /// See [BetEntity.description].
+  static final description = obx.QueryStringProperty<BetEntity>(
+    _entities[9].properties[5],
+  );
+
+  /// See [BetEntity.category].
+  static final category = obx.QueryStringProperty<BetEntity>(
+    _entities[9].properties[6],
+  );
+
+  /// See [BetEntity.optionLabelsCsv].
+  static final optionLabelsCsv = obx.QueryStringProperty<BetEntity>(
+    _entities[9].properties[7],
+  );
+
+  /// See [BetEntity.minStake].
+  static final minStake = obx.QueryStringProperty<BetEntity>(
+    _entities[9].properties[8],
+  );
+
+  /// See [BetEntity.feeBasisPoints].
+  static final feeBasisPoints = obx.QueryIntegerProperty<BetEntity>(
+    _entities[9].properties[9],
+  );
+
+  /// See [BetEntity.stakingDeadline].
+  static final stakingDeadline = obx.QueryIntegerProperty<BetEntity>(
+    _entities[9].properties[10],
+  );
+
+  /// See [BetEntity.votingDeadline].
+  static final votingDeadline = obx.QueryIntegerProperty<BetEntity>(
+    _entities[9].properties[11],
+  );
+
+  /// See [BetEntity.quorumBasisPoints].
+  static final quorumBasisPoints = obx.QueryIntegerProperty<BetEntity>(
+    _entities[9].properties[12],
+  );
+
+  /// See [BetEntity.majorityBasisPoints].
+  static final majorityBasisPoints = obx.QueryIntegerProperty<BetEntity>(
+    _entities[9].properties[13],
+  );
+
+  /// See [BetEntity.timestamp].
+  static final timestamp = obx.QueryIntegerProperty<BetEntity>(
+    _entities[9].properties[14],
+  );
+
+  /// See [BetEntity.signature].
+  static final signature = obx.QueryStringProperty<BetEntity>(
+    _entities[9].properties[15],
+  );
+
+  /// See [BetEntity.status].
+  static final status = obx.QueryStringProperty<BetEntity>(
+    _entities[9].properties[16],
+  );
+
+  /// See [BetEntity.winningOptionLabel].
+  static final winningOptionLabel = obx.QueryStringProperty<BetEntity>(
+    _entities[9].properties[17],
+  );
+}
+
+/// [BetStakeEntity] entity fields to define ObjectBox queries.
+class BetStakeEntity_ {
+  /// See [BetStakeEntity.id].
+  static final id = obx.QueryIntegerProperty<BetStakeEntity>(
+    _entities[10].properties[0],
+  );
+
+  /// See [BetStakeEntity.stakeId].
+  static final stakeId = obx.QueryStringProperty<BetStakeEntity>(
+    _entities[10].properties[1],
+  );
+
+  /// See [BetStakeEntity.betId].
+  static final betId = obx.QueryStringProperty<BetStakeEntity>(
+    _entities[10].properties[2],
+  );
+
+  /// See [BetStakeEntity.optionLabel].
+  static final optionLabel = obx.QueryStringProperty<BetStakeEntity>(
+    _entities[10].properties[3],
+  );
+
+  /// See [BetStakeEntity.stakerId].
+  static final stakerId = obx.QueryStringProperty<BetStakeEntity>(
+    _entities[10].properties[4],
+  );
+
+  /// See [BetStakeEntity.stakerPublicKey].
+  static final stakerPublicKey = obx.QueryStringProperty<BetStakeEntity>(
+    _entities[10].properties[5],
+  );
+
+  /// See [BetStakeEntity.amount].
+  static final amount = obx.QueryStringProperty<BetStakeEntity>(
+    _entities[10].properties[6],
+  );
+
+  /// See [BetStakeEntity.timestamp].
+  static final timestamp = obx.QueryIntegerProperty<BetStakeEntity>(
+    _entities[10].properties[7],
+  );
+
+  /// See [BetStakeEntity.signature].
+  static final signature = obx.QueryStringProperty<BetStakeEntity>(
+    _entities[10].properties[8],
+  );
+
+  /// See [BetStakeEntity.payoutAmount].
+  static final payoutAmount = obx.QueryStringProperty<BetStakeEntity>(
+    _entities[10].properties[9],
+  );
+
+  /// See [BetStakeEntity.payoutTxId].
+  static final payoutTxId = obx.QueryStringProperty<BetStakeEntity>(
+    _entities[10].properties[10],
+  );
+
+  /// See [BetStakeEntity.defaulted].
+  static final defaulted = obx.QueryBooleanProperty<BetStakeEntity>(
+    _entities[10].properties[11],
+  );
+}
+
+/// [BetVoteEntity] entity fields to define ObjectBox queries.
+class BetVoteEntity_ {
+  /// See [BetVoteEntity.id].
+  static final id = obx.QueryIntegerProperty<BetVoteEntity>(
+    _entities[11].properties[0],
+  );
+
+  /// See [BetVoteEntity.voteId].
+  static final voteId = obx.QueryStringProperty<BetVoteEntity>(
+    _entities[11].properties[1],
+  );
+
+  /// See [BetVoteEntity.betId].
+  static final betId = obx.QueryStringProperty<BetVoteEntity>(
+    _entities[11].properties[2],
+  );
+
+  /// See [BetVoteEntity.voterId].
+  static final voterId = obx.QueryStringProperty<BetVoteEntity>(
+    _entities[11].properties[3],
+  );
+
+  /// See [BetVoteEntity.voterPublicKey].
+  static final voterPublicKey = obx.QueryStringProperty<BetVoteEntity>(
+    _entities[11].properties[4],
+  );
+
+  /// See [BetVoteEntity.votedOptionLabel].
+  static final votedOptionLabel = obx.QueryStringProperty<BetVoteEntity>(
+    _entities[11].properties[5],
+  );
+
+  /// See [BetVoteEntity.timestamp].
+  static final timestamp = obx.QueryIntegerProperty<BetVoteEntity>(
+    _entities[11].properties[6],
+  );
+
+  /// See [BetVoteEntity.signature].
+  static final signature = obx.QueryStringProperty<BetVoteEntity>(
+    _entities[11].properties[7],
   );
 }

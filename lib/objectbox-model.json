@@ -417,10 +417,237 @@
         }
       ],
       "relations": []
+    },
+    {
+      "id": "10:1086634880077351573",
+      "lastPropertyId": "18:6474833297673803093",
+      "name": "BetEntity",
+      "properties": [
+        {
+          "id": "1:609119085186232239",
+          "name": "id",
+          "type": 6,
+          "flags": 1
+        },
+        {
+          "id": "2:2821127042528174804",
+          "name": "betId",
+          "indexId": "8:113938574774478154",
+          "type": 9,
+          "flags": 2080
+        },
+        {
+          "id": "3:4005850453464061287",
+          "name": "creatorId",
+          "type": 9
+        },
+        {
+          "id": "4:6569888302355237956",
+          "name": "creatorPublicKey",
+          "type": 9
+        },
+        {
+          "id": "5:1687085815428245847",
+          "name": "title",
+          "type": 9
+        },
+        {
+          "id": "6:8443347546409228755",
+          "name": "description",
+          "type": 9
+        },
+        {
+          "id": "7:3126311311578284632",
+          "name": "category",
+          "type": 9
+        },
+        {
+          "id": "8:8278170976132539754",
+          "name": "optionLabelsCsv",
+          "type": 9
+        },
+        {
+          "id": "9:3795781124621258614",
+          "name": "minStake",
+          "type": 9
+        },
+        {
+          "id": "10:724809199084544716",
+          "name": "feeBasisPoints",
+          "type": 6
+        },
+        {
+          "id": "11:9195770743455418573",
+          "name": "stakingDeadline",
+          "type": 6
+        },
+        {
+          "id": "12:1543976575685626912",
+          "name": "votingDeadline",
+          "type": 6
+        },
+        {
+          "id": "13:735689091785634140",
+          "name": "quorumBasisPoints",
+          "type": 6
+        },
+        {
+          "id": "14:8392680068268202643",
+          "name": "majorityBasisPoints",
+          "type": 6
+        },
+        {
+          "id": "15:2256044171035414344",
+          "name": "timestamp",
+          "type": 6
+        },
+        {
+          "id": "16:4546284278571956648",
+          "name": "signature",
+          "type": 9
+        },
+        {
+          "id": "17:6885069427485180149",
+          "name": "status",
+          "type": 9
+        },
+        {
+          "id": "18:6474833297673803093",
+          "name": "winningOptionLabel",
+          "type": 9
+        }
+      ],
+      "relations": []
+    },
+    {
+      "id": "11:837624297642086408",
+      "lastPropertyId": "12:23809329270852936",
+      "name": "BetStakeEntity",
+      "properties": [
+        {
+          "id": "1:7874488892404508474",
+          "name": "id",
+          "type": 6,
+          "flags": 1
+        },
+        {
+          "id": "2:993175160376223330",
+          "name": "stakeId",
+          "indexId": "9:3610881463104182408",
+          "type": 9,
+          "flags": 2080
+        },
+        {
+          "id": "3:6436267172895455461",
+          "name": "betId",
+          "indexId": "10:1031429534162349770",
+          "type": 9,
+          "flags": 2048
+        },
+        {
+          "id": "4:7233850984142646616",
+          "name": "optionLabel",
+          "type": 9
+        },
+        {
+          "id": "5:5442789041281296758",
+          "name": "stakerId",
+          "type": 9
+        },
+        {
+          "id": "6:2027039965654583504",
+          "name": "stakerPublicKey",
+          "type": 9
+        },
+        {
+          "id": "7:600534303892077065",
+          "name": "amount",
+          "type": 9
+        },
+        {
+          "id": "8:5729826067864721081",
+          "name": "timestamp",
+          "type": 6
+        },
+        {
+          "id": "9:9206998928388514509",
+          "name": "signature",
+          "type": 9
+        },
+        {
+          "id": "10:1756182244488429659",
+          "name": "payoutAmount",
+          "type": 9
+        },
+        {
+          "id": "11:1992126266290008381",
+          "name": "payoutTxId",
+          "type": 9
+        },
+        {
+          "id": "12:23809329270852936",
+          "name": "defaulted",
+          "type": 1
+        }
+      ],
+      "relations": []
+    },
+    {
+      "id": "12:8165455256903830067",
+      "lastPropertyId": "8:7039933571921166103",
+      "name": "BetVoteEntity",
+      "properties": [
+        {
+          "id": "1:8140504261210178972",
+          "name": "id",
+          "type": 6,
+          "flags": 1
+        },
+        {
+          "id": "2:2522193336915751013",
+          "name": "voteId",
+          "indexId": "11:3944886030916819879",
+          "type": 9,
+          "flags": 2080
+        },
+        {
+          "id": "3:8683963749048829489",
+          "name": "betId",
+          "indexId": "12:8786083299139181807",
+          "type": 9,
+          "flags": 2048
+        },
+        {
+          "id": "4:4431368755804177076",
+          "name": "voterId",
+          "type": 9
+        },
+        {
+          "id": "5:7984286378887203332",
+          "name": "voterPublicKey",
+          "type": 9
+        },
+        {
+          "id": "6:2114060536786444961",
+          "name": "votedOptionLabel",
+          "type": 9
+        },
+        {
+          "id": "7:7507969529584279692",
+          "name": "timestamp",
+          "type": 6
+        },
+        {
+          "id": "8:7039933571921166103",
+          "name": "signature",
+          "type": 9
+        }
+      ],
+      "relations": []
     }
   ],
-  "lastEntityId": "9:5143334093504545345",
-  "lastIndexId": "7:183303440657801944",
+  "lastEntityId": "12:8165455256903830067",
+  "lastIndexId": "12:8786083299139181807",
   "lastRelationId": "0:0",
   "lastSequenceId": "0:0",
   "modelVersion": 5,

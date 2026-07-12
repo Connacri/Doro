@@ -20,6 +20,10 @@ import '../network/network_health.dart';
 import 'webrtc_engine.dart';
 import 'peer_manager.dart';
 import 'signaling_client.dart';
+import '../storage/repositories/bet_repository.dart';
+import '../storage/repositories/bet_stake_repository.dart';
+import '../storage/repositories/bet_vote_repository.dart';
+import '../kernels/bet/bet_kernel.dart';
 
 class P2PNode {
   final NodeIdentityKeyPair identity;
@@ -34,6 +38,10 @@ class P2PNode {
   late final ProfileRepository profileRepo;
   late final OrderRepository orderRepo;
   late final TradeRepository tradeRepo;
+  late final BetKernel betKernel;
+  late final BetRepository betRepo;
+  late final BetStakeRepository betStakeRepo;
+  late final BetVoteRepository betVoteRepo;
 
   final SybilProtection sybil = SybilProtection();
 
@@ -106,6 +114,19 @@ class P2PNode {
     orderRepo = OrderRepository(db);
     tradeRepo = TradeRepository(db);
     marketKernel = MarketKernel(identity: identity, p2p: p2p, orderRepo: orderRepo, tradeRepo: tradeRepo, dag: dag);
+
+    betRepo = BetRepository(db);
+    betStakeRepo = BetStakeRepository(db);
+    betVoteRepo = BetVoteRepository(db);
+    betKernel = BetKernel(
+      identity: identity,
+      p2p: p2p,
+      betRepo: betRepo,
+      stakeRepo: betStakeRepo,
+      voteRepo: betVoteRepo,
+      balanceOf: (address) => walletCore.balanceOf(address),
+      sybil: sybil,
+    );
   }
 
   Stream<Map<String, dynamic>> get messages => messengerKernel.messages;
@@ -319,6 +340,7 @@ class P2PNode {
     _channelReadyController.close();
     _signalingErrorController.close();
     marketKernel.dispose();
+    betKernel.dispose();
   }
 
   void reconnectSignaling() {
