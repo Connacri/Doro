@@ -694,7 +694,20 @@ class MyIdCardCompact extends StatelessWidget {
           IconButton(
             icon: const Icon(Icons.qr_code_scanner, color: AppColors.primary),
             tooltip: "Voir mon QR code",
-            onPressed: () => showDialog(context: context, builder: (_) => Dialog(backgroundColor: AppColors.surface, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)), child: Padding(padding: const EdgeInsets.all(16), child: MyIdCard(myId: myId)))),
+            onPressed: () => showDialog(
+              context: context,
+              builder: (_) => Dialog(
+                backgroundColor: Colors.white,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                child: AspectRatio(
+                  aspectRatio: 1.0,
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: MyIdCard(myId: myId),
+                  ),
+                ),
+              ),
+            ),
           ),
         ],
       ),

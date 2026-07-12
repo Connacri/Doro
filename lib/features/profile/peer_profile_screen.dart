@@ -2,7 +2,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
-import 'package:qr_flutter/qr_flutter.dart';
+import 'package:pretty_qr_code/pretty_qr_code.dart';
 
 import 'profile_provider.dart';
 import '../chat/chat_provider.dart';
@@ -320,7 +320,18 @@ class _PeerProfileScreenState extends State<PeerProfileScreen> {
                         child: Stack(
                           alignment: Alignment.center,
                           children: [
-                            QrImageView(data: widget.peerId, version: QrVersions.auto, size: 220, backgroundColor: Colors.white),
+                            SizedBox(
+                              width: 220,
+                              height: 220,
+                              child: PrettyQrView.data(
+                                data: widget.peerId,
+                                errorCorrectLevel: QrErrorCorrectLevel.H,
+                                decoration: const PrettyQrDecoration(
+                                  shape: PrettyQrSmoothSymbol(),
+                                ),
+                              ),
+                            ),
+
                             Container(
                               width: 40,
                               height: 40,

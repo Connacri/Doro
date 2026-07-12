@@ -70,7 +70,20 @@ class _AmisScreenState extends State<AmisScreen> {
     if (result == "myid") {
       final myId = chat.myId;
       if (myId == null) return;
-      showDialog(context: context, builder: (_) => Dialog(backgroundColor: AppColors.surface, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)), child: Padding(padding: const EdgeInsets.all(16), child: MyIdCard(myId: myId))));
+      showDialog(
+        context: context,
+        builder: (_) => Dialog(
+          backgroundColor: Colors.white,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          child: AspectRatio(
+            aspectRatio: 1.0,
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: MyIdCard(myId: myId),
+            ),
+          ),
+        ),
+      );
       return;
     }
 
