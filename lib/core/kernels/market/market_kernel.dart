@@ -182,7 +182,11 @@ class MarketKernel {
     orderRepo.markFilled(trade.orderId);
     final counterpart = confirmed.sellerId == identity.nodeId ? confirmed.buyerId : confirmed.sellerId;
     final payload = await _signedTradeEvent("trade_accept", confirmed);
-    p2p.sendToPeer(counterpart, payload);
+    if (confirmed.currency.startsWith("EVENT:")) {
+      p2p.broadcast(payload);
+    } else {
+      p2p.sendToPeer(counterpart, payload);
+    }
     _tradeUpdates.add(null);
     _orderBookChanges.add(null);
   }
