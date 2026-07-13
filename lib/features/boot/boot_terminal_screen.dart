@@ -189,13 +189,17 @@ class _BootTerminalScreenState extends State<BootTerminalScreen> with SingleTick
                                     const SizedBox(width: 6),
                                     Container(width: 10, height: 10, decoration: const BoxDecoration(color: Color(0xFF61C454), shape: BoxShape.circle)),
                                     const SizedBox(width: 16),
-                                    Text(
-                                      "doro-core@node:~ boot.sh",
-                                      style: TextStyle(
-                                        color: Colors.white.withValues(alpha: 0.45),
-                                        fontFamily: 'monospace',
-                                        fontSize: 11.5,
-                                        fontWeight: FontWeight.w600,
+                                    Flexible(
+                                      child: Text(
+                                        "doro-core@node:~ boot.sh",
+                                        overflow: TextOverflow.ellipsis,
+                                        maxLines: 1,
+                                        style: TextStyle(
+                                          color: Colors.white.withValues(alpha: 0.45),
+                                          fontFamily: 'monospace',
+                                          fontSize: 11.5,
+                                          fontWeight: FontWeight.w600,
+                                        ),
                                       ),
                                     ),
                                     const Spacer(),
