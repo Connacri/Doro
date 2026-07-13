@@ -116,21 +116,19 @@ class BetProvider extends ChangeNotifier {
       );
 
       // 2. Publish on Supabase
-      if (bet != null) {
-        await Supabase.instance.client.from('bets').insert({
-          'id': bet.id,
-          'creator_id': bet.creatorId,
-          'title': bet.title,
-          'description': bet.description,
-          'category': bet.category,
-          'option_labels': bet.optionLabels,
-          'min_stake': bet.minStake.toString(),
-          'staking_deadline': stakingDeadline.toIso8601String(),
-          'voting_deadline': votingDeadline.toIso8601String(),
-          'status': 'open',
-        });
-        await loadSupabaseBets();
-      }
+      await Supabase.instance.client.from('bets').insert({
+        'id': bet.id,
+        'creator_id': bet.creatorId,
+        'title': bet.title,
+        'description': bet.description,
+        'category': bet.category,
+        'option_labels': bet.optionLabels,
+        'min_stake': bet.minStake.toString(),
+        'staking_deadline': stakingDeadline.toIso8601String(),
+        'voting_deadline': votingDeadline.toIso8601String(),
+        'status': 'open',
+      });
+      await loadSupabaseBets();
       notifyListeners();
       return bet;
     } catch (e) {

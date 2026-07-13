@@ -79,7 +79,7 @@ class SupabaseBootstrap extends ChangeNotifier {
         } catch (_) {}
 
         if (!alreadyInitialized) {
-          await Supabase.initialize(url: SupabaseConfig.url, anonKey: SupabaseConfig.anonKey)
+          await Supabase.initialize(url: SupabaseConfig.url, publishableKey: SupabaseConfig.anonKey)
               .timeout(_bindTimeout);
         }
         _clientInitialized = true;

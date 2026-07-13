@@ -6,7 +6,6 @@
 // séparé (`compute`) pour ne pas geler l'UI le temps du décodage/
 // réencodage, qui peut prendre plusieurs centaines de ms sur une
 // grosse photo.
-import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
 import 'package:image/image.dart' as img;
 

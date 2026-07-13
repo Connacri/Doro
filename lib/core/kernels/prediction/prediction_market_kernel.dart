@@ -128,7 +128,7 @@ class PredictionMarketKernel {
 
   void _onEventChange(PostgresChangePayload payload) async {
     final row = payload.newRecord;
-    if (row == null || row.isEmpty) return;
+    if (row.isEmpty) return;
 
     try {
       final event = PredictionEvent(
@@ -166,7 +166,7 @@ class PredictionMarketKernel {
 
   void _onOrderChange(PostgresChangePayload payload) async {
     final row = payload.newRecord;
-    if (row == null || row.isEmpty) return;
+    if (row.isEmpty) return;
 
     try {
       final order = ShareOrder(
@@ -193,7 +193,7 @@ class PredictionMarketKernel {
 
   void _onTradeChange(PostgresChangePayload payload) async {
     final row = payload.newRecord;
-    if (row == null || row.isEmpty) return;
+    if (row.isEmpty) return;
 
     try {
       final trade = Trade(

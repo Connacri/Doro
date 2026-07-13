@@ -5,7 +5,7 @@
 alter table public.profiles add column if not exists is_admin boolean not null default false;
 
 -- 2. Création de la table bets (paris créés par les admins)
-create table public.bets (
+create table if not exists public.bets (
   id                    text primary key,
   creator_id            text not null references public.profiles(public_key) on delete cascade,
   title                 text not null,
@@ -21,17 +21,19 @@ create table public.bets (
 );
 
 -- Index pour les recherches rapides
-create index bets_status_idx on public.bets (status);
-create index bets_staking_deadline_idx on public.bets (staking_deadline);
+create index if not exists bets_status_idx on public.bets (status);
+create index if not exists bets_staking_deadline_idx on public.bets (staking_deadline);
 
 -- RLS sur bets
 alter table public.bets enable row level security;
 
+drop policy if exists "bets_select_all" on public.bets;
 create policy "bets_select_all"
   on public.bets for select
   to authenticated
   using (true);
 
+drop policy if exists "bets_insert_admin" on public.bets;
 create policy "bets_insert_admin"
   on public.bets for insert
   to authenticated
@@ -43,6 +45,7 @@ create policy "bets_insert_admin"
     )
   );
 
+drop policy if exists "bets_update_admin" on public.bets;
 create policy "bets_update_admin"
   on public.bets for update
   to authenticated
@@ -56,7 +59,7 @@ create policy "bets_update_admin"
   ));
 
 -- 3. Création de la table bet_stakes (mises posées par les utilisateurs)
-create table public.bet_stakes (
+create table if not exists public.bet_stakes (
   id                    uuid primary key default gen_random_uuid(),
   bet_id                text not null references public.bets(id) on delete cascade,
   staker_id             text not null references public.profiles(public_key) on delete cascade,
@@ -69,24 +72,27 @@ create table public.bet_stakes (
 );
 
 -- Index pour les vérifications d'unicité et de liaison
-create index bet_stakes_bet_id_idx on public.bet_stakes (bet_id);
-create index bet_stakes_staker_id_idx on public.bet_stakes (staker_id);
-create index bet_stakes_amount_exact_idx on public.bet_stakes (amount_exact);
-create index bet_stakes_tx_id_idx on public.bet_stakes (tx_id);
+create index if not exists bet_stakes_bet_id_idx on public.bet_stakes (bet_id);
+create index if not exists bet_stakes_staker_id_idx on public.bet_stakes (staker_id);
+create index if not exists bet_stakes_amount_exact_idx on public.bet_stakes (amount_exact);
+create index if not exists bet_stakes_tx_id_idx on public.bet_stakes (tx_id);
 
 -- RLS sur bet_stakes
 alter table public.bet_stakes enable row level security;
 
+drop policy if exists "bet_stakes_select_all" on public.bet_stakes;
 create policy "bet_stakes_select_all"
   on public.bet_stakes for select
   to authenticated
   using (true);
 
+drop policy if exists "bet_stakes_insert_user" on public.bet_stakes;
 create policy "bet_stakes_insert_user"
   on public.bet_stakes for insert
   to authenticated
   with check (staker_id = current_pubkey());
 
+drop policy if exists "bet_stakes_update_user" on public.bet_stakes;
 create policy "bet_stakes_update_user"
   on public.bet_stakes for update
   to authenticated
@@ -94,7 +100,7 @@ create policy "bet_stakes_update_user"
   with check (staker_id = current_pubkey());
 
 -- 4. Création de la table processed_deposits (anti double dépense / idempotency)
-create table public.processed_deposits (
+create table if not exists public.processed_deposits (
   tx_id                 text primary key,
   bet_stake_id          uuid not null references public.bet_stakes(id) on delete cascade,
   amount                numeric not null,
@@ -104,6 +110,7 @@ create table public.processed_deposits (
 -- RLS sur processed_deposits
 alter table public.processed_deposits enable row level security;
 
+drop policy if exists "processed_deposits_select_all" on public.processed_deposits;
 create policy "processed_deposits_select_all"
   on public.processed_deposits for select
   to authenticated
@@ -112,6 +119,7 @@ create policy "processed_deposits_select_all"
 -- 5. Restriction des prédictions (prediction_events) aux administrateurs uniquement
 drop policy if exists "prediction_events_insert_all" on public.prediction_events;
 
+drop policy if exists "prediction_events_insert_admin" on public.prediction_events;
 create policy "prediction_events_insert_admin"
   on public.prediction_events for insert
   to authenticated
@@ -124,6 +132,32 @@ create policy "prediction_events_insert_admin"
   );
 
 -- 6. Publication Realtime pour les nouveaux paris et mises
-alter publication supabase_realtime add table public.bets;
-alter publication supabase_realtime add table public.bet_stakes;
-alter publication supabase_realtime add table public.processed_deposits;
+do $$
+begin
+  if not exists (
+    select 1 from pg_publication_rel pr
+    join pg_class c on pr.prrelid = c.oid
+    join pg_publication p on pr.prpubid = p.oid
+    where p.pubname = 'supabase_realtime' and c.relname = 'bets'
+  ) then
+    alter publication supabase_realtime add table public.bets;
+  end if;
+
+  if not exists (
+    select 1 from pg_publication_rel pr
+    join pg_class c on pr.prrelid = c.oid
+    join pg_publication p on pr.prpubid = p.oid
+    where p.pubname = 'supabase_realtime' and c.relname = 'bet_stakes'
+  ) then
+    alter publication supabase_realtime add table public.bet_stakes;
+  end if;
+
+  if not exists (
+    select 1 from pg_publication_rel pr
+    join pg_class c on pr.prrelid = c.oid
+    join pg_publication p on pr.prpubid = p.oid
+    where p.pubname = 'supabase_realtime' and c.relname = 'processed_deposits'
+  ) then
+    alter publication supabase_realtime add table public.processed_deposits;
+  end if;
+end $$;
