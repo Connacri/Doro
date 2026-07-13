@@ -1,25 +1,38 @@
 // lib/features/bet/bet_provider.dart
+import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../core/bet/bet_model.dart';
 import '../../core/kernels/bet/bet_kernel.dart';
 import '../../core/p2p/p2p_node.dart';
 import '../../core/storage/secure/keypair_store.dart';
+import '../../core/utils/logger.dart';
 
 class BetProvider extends ChangeNotifier {
   final P2PNode node;
   String? lastError;
+  List<Bet> _supabaseBets = [];
+  RealtimeChannel? _betsChannel;
+  StreamSubscription? _betKernelSub;
+  StreamSubscription? _settleSub;
 
   BetProvider(this.node) {
-    node.betKernel.betChanges.listen((_) {
+    _betKernelSub = node.betKernel.betChanges.listen((_) {
       if (hasListeners) notifyListeners();
     });
-    node.betKernel.settlementChanges.listen((_) {
+    _settleSub = node.betKernel.settlementChanges.listen((_) {
       if (hasListeners) notifyListeners();
     });
+    loadSupabaseBets();
+    subscribeToSupabaseBets();
   }
 
-  List<Bet> get openBets => node.betRepo.openBets();
-  List<Bet> get allBets => node.betRepo.all();
+  List<Bet> get openBets {
+    final now = DateTime.now().millisecondsSinceEpoch;
+    return allBets.where((b) => now < b.stakingDeadline).toList();
+  }
+
+  List<Bet> get allBets => _supabaseBets.isEmpty ? node.betRepo.all() : _supabaseBets;
 
   List<BetStake> stakesOf(String betId) => node.betStakeRepo.byBet(betId);
   List<BetVote> votesOf(String betId) => node.betVoteRepo.byBet(betId);
@@ -28,6 +41,51 @@ class BetProvider extends ChangeNotifier {
       stakesOf(betId).any((s) => s.stakerId == nodeId);
 
   BetTally tallyOf(Bet bet) => node.betKernel.computeTally(bet);
+
+  Future<void> loadSupabaseBets() async {
+    try {
+      final res = await Supabase.instance.client
+          .from('bets')
+          .select('*')
+          .order('created_at', ascending: false);
+      
+      _supabaseBets = (res as List).map((json) {
+        return Bet(
+          id: json['id'] as String,
+          creatorId: json['creator_id'] as String,
+          creatorPublicKey: json['creator_id'] as String,
+          title: json['title'] as String,
+          description: json['description'] as String? ?? "",
+          category: json['category'] as String? ?? "",
+          optionLabels: List<String>.from(json['option_labels']),
+          minStake: BigInt.parse(json['min_stake'].toString()),
+          feeBasisPoints: 200,
+          stakingDeadline: DateTime.parse(json['staking_deadline']).millisecondsSinceEpoch,
+          votingDeadline: DateTime.parse(json['voting_deadline']).millisecondsSinceEpoch,
+          timestamp: DateTime.parse(json['created_at']).millisecondsSinceEpoch,
+          signature: "",
+        );
+      }).toList();
+      notifyListeners();
+    } catch (e) {
+      Logger.error("BetProvider: Error loading bets from Supabase: $e");
+    }
+  }
+
+  void subscribeToSupabaseBets() {
+    _betsChannel?.unsubscribe();
+    _betsChannel = Supabase.instance.client
+        .channel('public:bets')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'bets',
+          callback: (payload) {
+            loadSupabaseBets();
+          },
+        )
+        .subscribe();
+  }
 
   Future<Bet?> createBet({
     required String title,
@@ -45,6 +103,7 @@ class BetProvider extends ChangeNotifier {
       return null;
     }
     try {
+      // 1. Publish locally (P2P)
       final bet = await node.betKernel.createAndPublishBet(
         title: title,
         description: description,
@@ -55,6 +114,23 @@ class BetProvider extends ChangeNotifier {
         minStake: minStake,
         keyPair: keyPair,
       );
+
+      // 2. Publish on Supabase
+      if (bet != null) {
+        await Supabase.instance.client.from('bets').insert({
+          'id': bet.id,
+          'creator_id': bet.creatorId,
+          'title': bet.title,
+          'description': bet.description,
+          'category': bet.category,
+          'option_labels': bet.optionLabels,
+          'min_stake': bet.minStake.toString(),
+          'staking_deadline': stakingDeadline.toIso8601String(),
+          'voting_deadline': votingDeadline.toIso8601String(),
+          'status': 'open',
+        });
+        await loadSupabaseBets();
+      }
       notifyListeners();
       return bet;
     } catch (e) {
@@ -100,8 +176,13 @@ class BetProvider extends ChangeNotifier {
     }
   }
 
-  /// À appeler quand l'utilisateur ouvre l'écran de détail d'un pari dont
-  /// la fenêtre de vote est peut-être écoulée — déclenche le règlement
-  /// s'il ne l'est pas déjà (idempotent, voir BetKernel.settleIfDue).
   Future<void> settleIfDue(Bet bet) => node.betKernel.settleIfDue(bet);
+
+  @override
+  void dispose() {
+    _betKernelSub?.cancel();
+    _settleSub?.cancel();
+    _betsChannel?.unsubscribe();
+    super.dispose();
+  }
 }
