@@ -75,15 +75,76 @@ Deno.serve(async (req: Request) => {
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
   );
 
-  const { error: upsertErr } = await adminClient
+  // Vérifier si cette clé publique est déjà liée à un compte
+  const { data: existingByKey, error: getErr } = await adminClient
     .from("profiles")
-    .upsert(
-      { auth_uid: authUid, public_key: publicKeyHex, display_name: displayName ?? null, last_seen: new Date().toISOString() },
-      { onConflict: "auth_uid" },
-    );
+    .select("auth_uid, display_name")
+    .eq("public_key", publicKeyHex)
+    .maybeSingle();
 
-  if (upsertErr) {
-    return new Response(JSON.stringify({ error: "bind_failed", detail: upsertErr.message }), { status: 500 });
+  if (getErr) {
+    return new Response(JSON.stringify({ error: "bind_failed", detail: getErr.message }), { status: 500 });
+  }
+
+  if (existingByKey) {
+    if (existingByKey.auth_uid === authUid) {
+      // Déjà lié au bon compte, on met juste à jour last_seen et éventuellement display_name
+      const { error: updateErr } = await adminClient
+        .from("profiles")
+        .update({
+          display_name: displayName ?? existingByKey.display_name,
+          last_seen: new Date().toISOString(),
+        })
+        .eq("auth_uid", authUid);
+
+      if (updateErr) {
+        return new Response(JSON.stringify({ error: "bind_failed", detail: updateErr.message }), { status: 500 });
+      }
+    } else {
+      // Lié à un ancien compte (ex. session anonyme expirée/recréée).
+      // On transfère la liaison vers le nouvel authUid pour ne pas perdre les données dépendantes (friendships, etc.) liées à public_key.
+      
+      // Supprimer un éventuel profil vide temporaire créé pour le nouvel authUid pour éviter les conflits
+      const { error: delErr } = await adminClient
+        .from("profiles")
+        .delete()
+        .eq("auth_uid", authUid);
+
+      if (delErr) {
+        return new Response(JSON.stringify({ error: "bind_failed", detail: delErr.message }), { status: 500 });
+      }
+
+      // Transférer la ligne existante vers le nouvel authUid
+      const { error: transferErr } = await adminClient
+        .from("profiles")
+        .update({
+          auth_uid: authUid,
+          display_name: displayName ?? existingByKey.display_name,
+          last_seen: new Date().toISOString(),
+        })
+        .eq("public_key", publicKeyHex);
+
+      if (transferErr) {
+        return new Response(JSON.stringify({ error: "bind_failed", detail: transferErr.message }), { status: 500 });
+      }
+    }
+  } else {
+    // Nouvelle clé publique, on fait un upsert standard
+    const { error: upsertErr } = await adminClient
+      .from("profiles")
+      .upsert(
+        {
+          auth_uid: authUid,
+          public_key: publicKeyHex,
+          display_name: displayName ?? null,
+          last_seen: new Date().toISOString(),
+        },
+        { onConflict: "auth_uid" },
+      );
+
+    if (upsertErr) {
+      return new Response(JSON.stringify({ error: "bind_failed", detail: upsertErr.message }), { status: 500 });
+    }
   }
 
   return new Response(JSON.stringify({ ok: true, publicKey: publicKeyHex }), {
