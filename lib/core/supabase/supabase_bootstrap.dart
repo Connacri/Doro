@@ -26,14 +26,16 @@ import '../crypto/signature.dart';
 import '../storage/objectbox/store.dart';
 import '../utils/node_identity.dart';
 import '../utils/logger.dart';
+import '../p2p/p2p_node.dart';
 
 enum SupabaseBootstrapStatus { initializing, ready, unavailable, error }
 
 class SupabaseBootstrap extends ChangeNotifier {
   final NodeIdentityKeyPair identity;
   final ObjectBoxStore db;
+  final P2PNode? node;
 
-  SupabaseBootstrap({required this.identity, required this.db});
+  SupabaseBootstrap({required this.identity, required this.db, this.node});
 
   SupabaseBootstrapStatus status = SupabaseBootstrapStatus.initializing;
   String? errorMessage;
@@ -95,6 +97,10 @@ class SupabaseBootstrap extends ChangeNotifier {
       messenger = SupabaseMessengerKernel(nodeId: identity.nodeId, supabase: supabase, db: db);
       presence = PresenceService(supabase, identity.nodeId)..start();
       profileService = ProfileService(supabase, identity.nodeId);
+
+      if (node != null) {
+        node!.initSupabase(supabase);
+      }
 
       status = SupabaseBootstrapStatus.ready;
       Logger.info("SupabaseBootstrap: messagerie prête.");

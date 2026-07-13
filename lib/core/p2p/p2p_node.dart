@@ -1,5 +1,6 @@
 // lib/core/p2p/p2p_node.dart
 import 'dart:async';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../storage/objectbox/store.dart';
 import '../storage/repositories/tx_repository.dart';
 import '../storage/repositories/order_repository.dart';
@@ -160,8 +161,17 @@ class P2PNode {
   DagEngine get dag => walletKernel.dag;
   WalletCore get wallet => walletKernel.wallet;
 
+  void initSupabase(SupabaseClient client) {
+    predictionKernel.initSupabase(client);
+  }
+
   Future<void> start({List<String>? signalingUrls}) async {
     await walletKernel.loadPersistedLedger();
+    // Doit venir APRÈS loadPersistedLedger() : reconstruit dans dag.balances
+    // les gains de prediction market déjà réclamés (jamais rejoués par
+    // loadPersistedLedger, qui ne connaît que TxRepository) — voir le
+    // commentaire de PredictionMarketKernel.restoreClaimedPayouts.
+    predictionKernel.restoreClaimedPayouts();
     await messengerKernel.friendRequests.load();
     Logger.info("Starting P2P node: $nodeId");
 

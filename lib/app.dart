@@ -89,7 +89,7 @@ class _DoroAppState extends State<DoroApp> with WidgetsBindingObserver {
     // Le P2PNode (wallet/DAG/marché/réseau) est prêt et suffisant pour
     // afficher l'app — on ne l'attend JAMAIS après Supabase.
     _node = node;
-    _supabaseBootstrap = SupabaseBootstrap(identity: identity, db: widget.db);
+    _supabaseBootstrap = SupabaseBootstrap(identity: identity, db: widget.db, node: node);
     Logger.info("Cœur local prêt (wallet, DAG, marché) — affichage de l'app.");
     if (!mounted) return;
     setState(() {});

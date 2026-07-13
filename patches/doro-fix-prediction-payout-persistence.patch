@@ -1,0 +1,119 @@
+diff --git a/lib/core/kernels/prediction/prediction_market_kernel.dart b/lib/core/kernels/prediction/prediction_market_kernel.dart
+index b229404..c836d83 100644
+--- a/lib/core/kernels/prediction/prediction_market_kernel.dart
++++ b/lib/core/kernels/prediction/prediction_market_kernel.dart
+@@ -69,6 +69,7 @@ class PredictionMarketKernel {
+   final Set<String> _seenEvents = {};
+   final Set<String> _seenMints = {}; // dédupliqué par txId de dépôt
+   final Set<String> _seenClaims = {}; // dédupliqué par claimId
++  bool _payoutsRestored = false; // garde-fou de restoreClaimedPayouts()
+ 
+   final _eventChanges = StreamController<void>.broadcast();
+   Stream<void> get eventChanges => _eventChanges.stream;
+@@ -101,6 +102,63 @@ class PredictionMarketKernel {
+     });
+   }
+ 
++  // ---------------------------------------------------------------------
++  // 0. Restauration au démarrage
++  // ---------------------------------------------------------------------
++
++  /// À appeler une fois au démarrage, juste après
++  /// `WalletKernel.loadPersistedLedger()`.
++  ///
++  /// BUG CORRIGÉ : `claimPayout`/`_handleClaimPayout` créditent
++  /// `dag.balances` directement (`dag.balances.credit(...)`), sans jamais
++  /// passer par une `Transaction` signée — impossible de faire autrement
++  /// ici, puisqu'aucune clé privée n'existe pour signer un `send` DEPUIS
++  /// l'escrow (voir `EscrowAddress`). Résultat : ce crédit n'était QUE en
++  /// mémoire. Or `dag.balances` est entièrement reconstruit à chaque
++  /// démarrage par `loadPersistedLedger()`, qui ne rejoue QUE
++  /// `TxRepository` — donc après un redémarrage, un gain de prediction
++  /// market disparaissait de `dag.balances` (solde dépensable) alors même
++  /// que `OutcomePositionEntity.sharesClaimed` restait marqué comme
++  /// définitivement réclamé côté `OutcomePositionRepository` (persisté,
++  /// lui). La part gagnante n'était donc ni dépensable, ni re-réclamable :
++  /// le montant s'évaporait silencieusement.
++  ///
++  /// Le fix ne cherche pas à fabriquer une fausse tx signée par l'escrow
++  /// (impossible et non désirable — voir le commentaire de classe
++  /// ci-dessus). Il exploite plutôt le fait que `sharesClaimed` EST déjà
++  /// durablement persisté par `OutcomePositionRepository.markClaimed` :
++  /// c'est la seule source de vérité qui manquait à `dag.balances`, donc
++  /// on la rejoue ici, une fois, pour reconstruire exactement le même
++  /// crédit qu'au moment du claim d'origine. Le montant est calculé
++  /// depuis un ÉTAT final déjà persisté (pas depuis un rejeu
++  /// d'évènements) — mais `dag.balances.credit` reste une opération
++  /// additive, donc PAS naturellement idempotente : voir le garde-fou
++  /// `_payoutsRestored` ci-dessous, qui rend un second appel accidentel
++  /// sur la même instance inoffensif.
++  void restoreClaimedPayouts() {
++    // Contrairement à `DagEngine.addValidated` (idempotent par tx.id), un
++    // crédit direct sur `dag.balances` ne l'est pas — un double appel sur
++    // la même instance doublerait le crédit. Un seul appel par instance
++    // de kernel (donc par démarrage de P2PNode) est le contrat attendu ;
++    // ce garde-fou rend un second appel accidentel inoffensif plutôt que
++    // silencieusement incorrect.
++    if (_payoutsRestored) return;
++    _payoutsRestored = true;
++
++    final claimed = positionRepo.allClaimed();
++    if (claimed.isEmpty) return;
++    var restoredCount = 0;
++    for (final position in claimed) {
++      final payout = position.sharesClaimed * ProfitCalculator.fullContractValue;
++      if (payout <= BigInt.zero) continue;
++      dag.balances.credit(position.holderAddress, payout);
++      restoredCount++;
++    }
++    Logger.info(
++      "PredictionMarketKernel: $restoredCount position(s) réclamée(s) restaurée(s) dans dag.balances",
++    );
++  }
++
+   // ---------------------------------------------------------------------
+   // 1. Création de l'événement
+   // ---------------------------------------------------------------------
+diff --git a/lib/core/p2p/p2p_node.dart b/lib/core/p2p/p2p_node.dart
+index 46e42db..6b90478 100644
+--- a/lib/core/p2p/p2p_node.dart
++++ b/lib/core/p2p/p2p_node.dart
+@@ -162,6 +162,11 @@ class P2PNode {
+ 
+   Future<void> start({List<String>? signalingUrls}) async {
+     await walletKernel.loadPersistedLedger();
++    // Doit venir APRÈS loadPersistedLedger() : reconstruit dans dag.balances
++    // les gains de prediction market déjà réclamés (jamais rejoués par
++    // loadPersistedLedger, qui ne connaît que TxRepository) — voir le
++    // commentaire de PredictionMarketKernel.restoreClaimedPayouts.
++    predictionKernel.restoreClaimedPayouts();
+     await messengerKernel.friendRequests.load();
+     Logger.info("Starting P2P node: $nodeId");
+ 
+diff --git a/lib/core/storage/repositories/outcome_position_repository.dart b/lib/core/storage/repositories/outcome_position_repository.dart
+index 378a266..e6fe519 100644
+--- a/lib/core/storage/repositories/outcome_position_repository.dart
++++ b/lib/core/storage/repositories/outcome_position_repository.dart
+@@ -54,6 +54,22 @@ class OutcomePositionRepository {
+   List<OutcomePosition> positionsForHolder(String holder) =>
+       _box.query(OutcomePositionEntity_.holderAddress.equals(holder)).build().find().map(_toModel).toList();
+ 
++  /// Toutes les positions (tous events, tous holders confondus) ayant au
++  /// moins une part déjà réclamée — c'est-à-dire tout `sharesClaimed` qui
++  /// a un jour été crédité sur `dag.balances` par
++  /// `PredictionMarketKernel.claimPayout`/`_handleClaimPayout`.
++  ///
++  /// Sert UNIQUEMENT à reconstruire `dag.balances` au démarrage (voir
++  /// `PredictionMarketKernel.restoreClaimedPayouts`) : contrairement à une
++  /// tx normale, un claim ne passe jamais par `TxRepository`, donc
++  /// `loadPersistedLedger()` ne le rejoue pas — c'est `sharesClaimed` ici,
++  /// seul état vraiment durable du claim, qui fait foi.
++  List<OutcomePosition> allClaimed() => _box
++      .getAll()
++      .where((e) => e.sharesClaimed != "0" && BigInt.parse(e.sharesClaimed) > BigInt.zero)
++      .map(_toModel)
++      .toList();
++
+   OutcomePosition _toModel(OutcomePositionEntity e) => OutcomePosition(
+         eventId: e.eventId, outcome: e.outcome, holderAddress: e.holderAddress,
+         shares: BigInt.parse(e.shares), sharesClaimed: BigInt.parse(e.sharesClaimed),

@@ -2,6 +2,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:cryptography/cryptography.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../crypto/signature.dart';
 import '../../dag/dag_engine.dart';
 import '../../dag/transaction_model.dart';
@@ -69,6 +70,7 @@ class PredictionMarketKernel {
   final Set<String> _seenEvents = {};
   final Set<String> _seenMints = {}; // dédupliqué par txId de dépôt
   final Set<String> _seenClaims = {}; // dédupliqué par claimId
+  bool _payoutsRestored = false; // garde-fou de restoreClaimedPayouts()
 
   final _eventChanges = StreamController<void>.broadcast();
   Stream<void> get eventChanges => _eventChanges.stream;
@@ -76,6 +78,223 @@ class PredictionMarketKernel {
   Stream<void> get positionChanges => _positionChanges.stream;
   final _orderChanges = StreamController<void>.broadcast();
   Stream<void> get orderChanges => _orderChanges.stream;
+
+  SupabaseClient? _supabase;
+  RealtimeChannel? _eventsChannel;
+  RealtimeChannel? _ordersChannel;
+  RealtimeChannel? _tradesChannel;
+
+  void initSupabase(SupabaseClient client) {
+    if (_supabase != null) return;
+    _supabase = client;
+    _subscribeRealtime();
+    _hydratePredictionsFromServer();
+  }
+
+  void _subscribeRealtime() {
+    if (_supabase == null) return;
+    Logger.info("PredictionMarketKernel: Subscribing to Supabase Realtime...");
+
+    _eventsChannel = _supabase!
+        .channel('public:prediction_events')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'prediction_events',
+          callback: _onEventChange,
+        )
+        .subscribe();
+
+    _ordersChannel = _supabase!
+        .channel('public:share_orders')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'share_orders',
+          callback: _onOrderChange,
+        )
+        .subscribe();
+
+    _tradesChannel = _supabase!
+        .channel('public:prediction_trades')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'prediction_trades',
+          callback: _onTradeChange,
+        )
+        .subscribe();
+  }
+
+  void _onEventChange(PostgresChangePayload payload) async {
+    final row = payload.newRecord;
+    if (row == null || row.isEmpty) return;
+
+    try {
+      final event = PredictionEvent(
+        id: row['id'] as String,
+        question: row['question'] as String,
+        creatorId: row['creator_id'] as String,
+        creatorPublicKey: row['creator_public_key'] as String,
+        oracleAddress: row['oracle_address'] as String,
+        oraclePublicKey: row['oracle_public_key'] as String,
+        createdAt: row['created_at'] is String ? int.parse(row['created_at']) : row['created_at'] as int,
+        closesAt: row['closes_at'] is String ? int.parse(row['closes_at']) : row['closes_at'] as int,
+        creatorSignature: row['creator_signature'] as String,
+        winningOutcome: row['winning_outcome'] == null
+            ? null
+            : (row['winning_outcome'] == "yes" ? PredictionOutcome.yes : PredictionOutcome.no),
+        resolutionSignature: row['resolution_signature'] as String?,
+        resolvedAt: row['resolved_at'] is String ? int.parse(row['resolved_at']) : row['resolved_at'] as int?,
+      );
+
+      final local = eventRepo.get(event.id);
+      if (local == null) {
+        if (await _verify(event.creationHash, event.creatorPublicKey, event.creatorSignature)) {
+          eventRepo.save(event);
+          _seenEvents.add(event.id);
+          _eventChanges.add(null);
+        }
+      } else if (!local.isResolved && event.isResolved) {
+        eventRepo.save(event);
+        _eventChanges.add(null);
+      }
+    } catch (e) {
+      Logger.error("PredictionMarketKernel: Error parsing event from Supabase Realtime: $e");
+    }
+  }
+
+  void _onOrderChange(PostgresChangePayload payload) async {
+    final row = payload.newRecord;
+    if (row == null || row.isEmpty) return;
+
+    try {
+      final order = ShareOrder(
+        id: row['id'] as String,
+        eventId: row['event_id'] as String,
+        outcome: row['outcome'] as String,
+        makerId: row['maker_id'] as String,
+        makerPublicKey: row['maker_public_key'] as String,
+        side: (row['side'] as String) == "buy" ? OrderSide.buy : OrderSide.sell,
+        shares: BigInt.parse(row['shares'] as String),
+        filledShares: BigInt.parse(row['filled_shares'] as String),
+        pricePerShare: BigInt.parse(row['price_per_share'] as String),
+        timestamp: row['timestamp'] is String ? int.parse(row['timestamp']) : row['timestamp'] as int,
+        signature: row['signature'] as String,
+        cancelled: row['cancelled'] as bool? ?? false,
+      );
+
+      shareOrderRepo.save(order);
+      _orderChanges.add(null);
+    } catch (e) {
+      Logger.error("PredictionMarketKernel: Error parsing order from Supabase Realtime: $e");
+    }
+  }
+
+  void _onTradeChange(PostgresChangePayload payload) async {
+    final row = payload.newRecord;
+    if (row == null || row.isEmpty) return;
+
+    try {
+      final trade = Trade(
+        id: row['id'] as String,
+        orderId: row['order_id'] as String,
+        sellerId: row['seller_id'] as String,
+        buyerId: row['buyer_id'] as String,
+        amount: BigInt.parse(row['amount'] as String),
+        pricePerUnit: BigInt.parse(row['price_per_unit'] as String),
+        currency: row['currency'] as String,
+        timestamp: row['timestamp'] is String ? int.parse(row['timestamp']) : row['timestamp'] as int,
+        status: TradeStatus.values.firstWhere((s) => s.name == row['status']),
+        txId: row['tx_id'] as String?,
+      );
+
+      tradeRepo.save(trade);
+      processTrades(tradeRepo.all());
+      _orderChanges.add(null);
+    } catch (e) {
+      Logger.error("PredictionMarketKernel: Error parsing trade from Supabase Realtime: $e");
+    }
+  }
+
+  Future<void> _hydratePredictionsFromServer() async {
+    if (_supabase == null) return;
+    try {
+      Logger.info("PredictionMarketKernel: Hydrating predictions from Supabase...");
+
+      final eventsData = await _supabase!.from('prediction_events').select();
+      for (final row in eventsData) {
+        final event = PredictionEvent(
+          id: row['id'] as String,
+          question: row['question'] as String,
+          creatorId: row['creator_id'] as String,
+          creatorPublicKey: row['creator_public_key'] as String,
+          oracleAddress: row['oracle_address'] as String,
+          oraclePublicKey: row['oracle_public_key'] as String,
+          createdAt: row['created_at'] is String ? int.parse(row['created_at']) : row['created_at'] as int,
+          closesAt: row['closes_at'] is String ? int.parse(row['closes_at']) : row['closes_at'] as int,
+          creatorSignature: row['creator_signature'] as String,
+          winningOutcome: row['winning_outcome'] == null
+              ? null
+              : (row['winning_outcome'] == "yes" ? PredictionOutcome.yes : PredictionOutcome.no),
+          resolutionSignature: row['resolution_signature'] as String?,
+          resolvedAt: row['resolved_at'] is String ? int.parse(row['resolved_at']) : row['resolved_at'] as int?,
+        );
+        if (!eventRepo.exists(event.id)) {
+          eventRepo.save(event);
+        } else {
+          final local = eventRepo.get(event.id);
+          if (local != null && !local.isResolved && event.isResolved) {
+            eventRepo.save(event);
+          }
+        }
+      }
+      _eventChanges.add(null);
+
+      final ordersData = await _supabase!.from('share_orders').select();
+      for (final row in ordersData) {
+        final order = ShareOrder(
+          id: row['id'] as String,
+          eventId: row['event_id'] as String,
+          outcome: row['outcome'] as String,
+          makerId: row['maker_id'] as String,
+          makerPublicKey: row['maker_public_key'] as String,
+          side: (row['side'] as String) == "buy" ? OrderSide.buy : OrderSide.sell,
+          shares: BigInt.parse(row['shares'] as String),
+          filledShares: BigInt.parse(row['filled_shares'] as String),
+          pricePerShare: BigInt.parse(row['price_per_share'] as String),
+          timestamp: row['timestamp'] is String ? int.parse(row['timestamp']) : row['timestamp'] as int,
+          signature: row['signature'] as String,
+          cancelled: row['cancelled'] as bool? ?? false,
+        );
+        shareOrderRepo.save(order);
+      }
+      _orderChanges.add(null);
+
+      final tradesData = await _supabase!.from('prediction_trades').select();
+      for (final row in tradesData) {
+        final trade = Trade(
+          id: row['id'] as String,
+          orderId: row['order_id'] as String,
+          sellerId: row['seller_id'] as String,
+          buyerId: row['buyer_id'] as String,
+          amount: BigInt.parse(row['amount'] as String),
+          pricePerUnit: BigInt.parse(row['price_per_unit'] as String),
+          currency: row['currency'] as String,
+          timestamp: row['timestamp'] is String ? int.parse(row['timestamp']) : row['timestamp'] as int,
+          status: TradeStatus.values.firstWhere((s) => s.name == row['status']),
+          txId: row['tx_id'] as String?,
+        );
+        tradeRepo.save(trade);
+      }
+      processTrades(tradeRepo.all());
+      _orderChanges.add(null);
+
+      Logger.info("PredictionMarketKernel: Hydrated ${eventsData.length} events, ${ordersData.length} orders, ${tradesData.length} trades.");
+    } catch (e) {
+      Logger.error("PredictionMarketKernel: Error hydrating from Supabase: $e");
+    }
+  }
 
   PredictionMarketKernel({
     required this.identity,
@@ -99,6 +318,63 @@ class PredictionMarketKernel {
         case "share_order_fill": _handleShareOrderFill(data); break;
       }
     });
+  }
+
+  // ---------------------------------------------------------------------
+  // 0. Restauration au démarrage
+  // ---------------------------------------------------------------------
+
+  /// À appeler une fois au démarrage, juste après
+  /// `WalletKernel.loadPersistedLedger()`.
+  ///
+  /// BUG CORRIGÉ : `claimPayout`/`_handleClaimPayout` créditent
+  /// `dag.balances` directement (`dag.balances.credit(...)`), sans jamais
+  /// passer par une `Transaction` signée — impossible de faire autrement
+  /// ici, puisqu'aucune clé privée n'existe pour signer un `send` DEPUIS
+  /// l'escrow (voir `EscrowAddress`). Résultat : ce crédit n'était QUE en
+  /// mémoire. Or `dag.balances` est entièrement reconstruit à chaque
+  /// démarrage par `loadPersistedLedger()`, qui ne rejoue QUE
+  /// `TxRepository` — donc après un redémarrage, un gain de prediction
+  /// market disparaissait de `dag.balances` (solde dépensable) alors même
+  /// que `OutcomePositionEntity.sharesClaimed` restait marqué comme
+  /// définitivement réclamé côté `OutcomePositionRepository` (persisté,
+  /// lui). La part gagnante n'était donc ni dépensable, ni re-réclamable :
+  /// le montant s'évaporait silencieusement.
+  ///
+  /// Le fix ne cherche pas à fabriquer une fausse tx signée par l'escrow
+  /// (impossible et non désirable — voir le commentaire de classe
+  /// ci-dessus). Il exploite plutôt le fait que `sharesClaimed` EST déjà
+  /// durablement persisté par `OutcomePositionRepository.markClaimed` :
+  /// c'est la seule source de vérité qui manquait à `dag.balances`, donc
+  /// on la rejoue ici, une fois, pour reconstruire exactement le même
+  /// crédit qu'au moment du claim d'origine. Le montant est calculé
+  /// depuis un ÉTAT final déjà persisté (pas depuis un rejeu
+  /// d'évènements) — mais `dag.balances.credit` reste une opération
+  /// additive, donc PAS naturellement idempotente : voir le garde-fou
+  /// `_payoutsRestored` ci-dessous, qui rend un second appel accidentel
+  /// sur la même instance inoffensif.
+  void restoreClaimedPayouts() {
+    // Contrairement à `DagEngine.addValidated` (idempotent par tx.id), un
+    // crédit direct sur `dag.balances` ne l'est pas — un double appel sur
+    // la même instance doublerait le crédit. Un seul appel par instance
+    // de kernel (donc par démarrage de P2PNode) est le contrat attendu ;
+    // ce garde-fou rend un second appel accidentel inoffensif plutôt que
+    // silencieusement incorrect.
+    if (_payoutsRestored) return;
+    _payoutsRestored = true;
+
+    final claimed = positionRepo.allClaimed();
+    if (claimed.isEmpty) return;
+    var restoredCount = 0;
+    for (final position in claimed) {
+      final payout = position.sharesClaimed * ProfitCalculator.fullContractValue;
+      if (payout <= BigInt.zero) continue;
+      dag.balances.credit(position.holderAddress, payout);
+      restoredCount++;
+    }
+    Logger.info(
+      "PredictionMarketKernel: $restoredCount position(s) réclamée(s) restaurée(s) dans dag.balances",
+    );
   }
 
   // ---------------------------------------------------------------------
@@ -137,6 +413,23 @@ class PredictionMarketKernel {
     eventRepo.save(event);
     p2p.broadcast({"type": "event_publish", ...event.toJson()});
     _eventChanges.add(null);
+
+    if (_supabase != null) {
+      unawaited(_supabase!.from('prediction_events').insert({
+        'id': event.id,
+        'question': event.question,
+        'creator_id': event.creatorId,
+        'creator_public_key': event.creatorPublicKey,
+        'oracle_address': event.oracleAddress,
+        'oracle_public_key': event.oraclePublicKey,
+        'created_at': event.createdAt,
+        'closes_at': event.closesAt,
+        'creator_signature': event.creatorSignature,
+      }).catchError((e) {
+        Logger.error("Supabase insert event error: $e");
+      }));
+    }
+
     return event;
   }
 
@@ -318,6 +611,16 @@ class PredictionMarketKernel {
       "resolvedAt": resolved.resolvedAt,
     });
     _eventChanges.add(null);
+
+    if (_supabase != null) {
+      unawaited(_supabase!.from('prediction_events').update({
+        'winning_outcome': outcome.name,
+        'resolution_signature': signatureHex,
+        'resolved_at': resolved.resolvedAt,
+      }).eq('id', event.id).catchError((e) {
+        Logger.error("Supabase update event error: $e");
+      }));
+    }
   }
 
   Future<void> _handleEventResolve(Map<String, dynamic> data) async {
@@ -551,6 +854,25 @@ class PredictionMarketKernel {
       "order": order.toJson(),
     });
 
+    if (_supabase != null) {
+      unawaited(_supabase!.from('share_orders').insert({
+        'id': order.id,
+        'event_id': order.eventId,
+        'outcome': order.outcome,
+        'maker_id': order.makerId,
+        'maker_public_key': order.makerPublicKey,
+        'side': order.side.name,
+        'shares': order.shares.toString(),
+        'filled_shares': order.filledShares.toString(),
+        'price_per_share': order.pricePerShare.toString(),
+        'timestamp': order.timestamp,
+        'signature': order.signature,
+        'cancelled': order.cancelled,
+      }).catchError((e) {
+        Logger.error("Supabase insert share order error: $e");
+      }));
+    }
+
     return order;
   }
 
@@ -578,6 +900,14 @@ class PredictionMarketKernel {
       "signerPublicKey": order.makerPublicKey,
       "signature": signatureHex,
     });
+
+    if (_supabase != null) {
+      unawaited(_supabase!.from('share_orders').update({
+        'cancelled': true,
+      }).eq('id', orderId).catchError((e) {
+        Logger.error("Supabase update share order (cancel) error: $e");
+      }));
+    }
 
     return true;
   }
@@ -637,6 +967,29 @@ class PredictionMarketKernel {
       "signerPublicKey": buyerPublicKeyHex,
       "signature": signatureHex,
     });
+
+    if (_supabase != null) {
+      unawaited(_supabase!.from('share_orders').update({
+        'filled_shares': updatedOrder.filledShares.toString(),
+      }).eq('id', order.id).catchError((e) {
+        Logger.error("Supabase update share order (fill) error: $e");
+      }));
+
+      unawaited(_supabase!.from('prediction_trades').insert({
+        'id': payTx.id,
+        'order_id': order.id,
+        'seller_id': order.makerId,
+        'buyer_id': buyerAddress,
+        'amount': sharesToFill.toString(),
+        'price_per_unit': order.pricePerShare.toString(),
+        'currency': 'EVENT:${order.eventId}:${order.outcome}',
+        'timestamp': DateTime.now().millisecondsSinceEpoch,
+        'status': 'confirmed',
+        'tx_id': payTx.id,
+      }).catchError((e) {
+        Logger.error("Supabase insert prediction trade error: $e");
+      }));
+    }
 
     return payTx.id;
   }
@@ -746,6 +1099,9 @@ class PredictionMarketKernel {
   }
 
   void dispose() {
+    _eventsChannel?.unsubscribe();
+    _ordersChannel?.unsubscribe();
+    _tradesChannel?.unsubscribe();
     _eventChanges.close();
     _positionChanges.close();
     _orderChanges.close();

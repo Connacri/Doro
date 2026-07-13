@@ -54,6 +54,22 @@ class OutcomePositionRepository {
   List<OutcomePosition> positionsForHolder(String holder) =>
       _box.query(OutcomePositionEntity_.holderAddress.equals(holder)).build().find().map(_toModel).toList();
 
+  /// Toutes les positions (tous events, tous holders confondus) ayant au
+  /// moins une part déjà réclamée — c'est-à-dire tout `sharesClaimed` qui
+  /// a un jour été crédité sur `dag.balances` par
+  /// `PredictionMarketKernel.claimPayout`/`_handleClaimPayout`.
+  ///
+  /// Sert UNIQUEMENT à reconstruire `dag.balances` au démarrage (voir
+  /// `PredictionMarketKernel.restoreClaimedPayouts`) : contrairement à une
+  /// tx normale, un claim ne passe jamais par `TxRepository`, donc
+  /// `loadPersistedLedger()` ne le rejoue pas — c'est `sharesClaimed` ici,
+  /// seul état vraiment durable du claim, qui fait foi.
+  List<OutcomePosition> allClaimed() => _box
+      .getAll()
+      .where((e) => e.sharesClaimed != "0" && BigInt.parse(e.sharesClaimed) > BigInt.zero)
+      .map(_toModel)
+      .toList();
+
   OutcomePosition _toModel(OutcomePositionEntity e) => OutcomePosition(
         eventId: e.eventId, outcome: e.outcome, holderAddress: e.holderAddress,
         shares: BigInt.parse(e.shares), sharesClaimed: BigInt.parse(e.sharesClaimed),
