@@ -13,6 +13,11 @@ class PredictionEventRepository {
   bool exists(String eventId) =>
       _box.query(PredictionEventEntity_.eventId.equals(eventId)).build().findFirst() != null;
 
+  void delete(String eventId) {
+    final existing = _box.query(PredictionEventEntity_.eventId.equals(eventId)).build().findFirst();
+    if (existing != null) _box.remove(existing.id);
+  }
+
   void save(PredictionEvent e) {
     final existing = _box.query(PredictionEventEntity_.eventId.equals(e.id)).build().findFirst();
     if (existing != null) {

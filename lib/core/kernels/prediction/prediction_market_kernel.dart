@@ -310,6 +310,7 @@ class PredictionMarketKernel {
       if (data is! Map<String, dynamic>) return;
       switch (data["type"]) {
         case "event_publish": _handleEventPublish(data); break;
+        case "event_delete": _handleEventDelete(data); break;
         case "event_resolve": _handleEventResolve(data); break;
         case "set_minted": _handleSetMinted(data); break;
         case "claim_payout": _handleClaimPayout(data); break;
@@ -621,6 +622,37 @@ class PredictionMarketKernel {
         Logger.error("Supabase update event error: $e");
       }));
     }
+  }
+
+  Future<void> deleteEvent(PredictionEvent event) async {
+    if (event.isResolved) {
+      Logger.warn("Impossible de supprimer un événement déjà résolu");
+      return;
+    }
+
+    eventRepo.delete(event.id);
+    _seenEvents.remove(event.id);
+    p2p.broadcast({"type": "event_delete", "eventId": event.id});
+    _eventChanges.add(null);
+
+    if (_supabase != null) {
+      unawaited(_supabase!.from('prediction_events').delete().eq('id', event.id).catchError((e) {
+        Logger.error("Supabase delete event error: $e");
+      }));
+    }
+  }
+
+  Future<void> _handleEventDelete(Map<String, dynamic> data) async {
+    final eventId = data["eventId"] as String?;
+    if (eventId == null) return;
+
+    final event = eventRepo.get(eventId);
+    if (event == null || event.isResolved) return;
+
+    eventRepo.delete(eventId);
+    _seenEvents.remove(eventId);
+    p2p.broadcast(data);
+    _eventChanges.add(null);
   }
 
   Future<void> _handleEventResolve(Map<String, dynamic> data) async {

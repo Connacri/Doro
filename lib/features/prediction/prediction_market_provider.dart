@@ -93,6 +93,25 @@ class PredictionMarketProvider extends ChangeNotifier {
     return true;
   }
 
+  Future<bool> deleteEvent(PredictionEvent event) async {
+    if (!_ensureWallet()) return false;
+    final wallet = walletProvider!.wallets.last;
+    final keyPair = await KeypairStore.load(wallet.address);
+    if (keyPair == null) {
+      lastError = "Clé privée locale introuvable.";
+      notifyListeners();
+      return false;
+    }
+    if (wallet.address != event.creatorId) {
+      lastError = "Seul le créateur peut supprimer ce marché.";
+      notifyListeners();
+      return false;
+    }
+    await node.predictionKernel.deleteEvent(event);
+    notifyListeners();
+    return true;
+  }
+
   Future<bool> resolve({required PredictionEvent event, required PredictionOutcome outcome}) async {
     if (!_ensureWallet()) return false;
     final wallet = walletProvider!.wallets.last;

@@ -39,31 +39,47 @@ class SupabaseIdentityService {
     String? displayName,
   }) async {
     // 1) Session anonyme (créée une seule fois, persistée par le SDK).
+    //    Retry si PGRST303 (JWT clock skew) — l'horloge locale peut être
+    //    en avance sur le serveur Supabase.
     if (_client.auth.currentSession == null) {
-      await _client.auth.signInAnonymously();
+      await _signInAnonymouslyWithRetry();
     }
     final authUid = _client.auth.currentUser?.id;
     if (authUid == null) {
       throw StateError('SupabaseIdentityService: session anonyme absente après signInAnonymously()');
     }
 
-    // Déjà lié à cette session ? On évite un appel réseau inutile.
-    final existing = await _client
-        .from('profiles')
-        .select('public_key')
-        .eq('auth_uid', authUid)
-        .maybeSingle();
+    // 2) Vérifier lié existant avec retry si JWT clock skew (PGRST303).
+    Map<String, dynamic>? existing;
+    for (int attempt = 0; attempt < 3; attempt++) {
+      try {
+        existing = await _client
+            .from('profiles')
+            .select('public_key')
+            .eq('auth_uid', authUid)
+            .maybeSingle();
+        break;
+      } on PostgrestException catch (e) {
+        if (e.code == 'PGRST303' && attempt < 2) {
+          Logger.warn('PGRST303 (JWT clock skew) — waiting ${2 + attempt}s before retry');
+          await Future.delayed(Duration(seconds: 2 + attempt));
+        } else {
+          rethrow;
+        }
+      }
+    }
+
     if (existing != null && existing['public_key'] == publicKeyHex) {
       return authUid;
     }
 
-    // 2) Signature Ed25519 locale — la clé privée ne quitte jamais l'app.
+    // 3) Signature Ed25519 locale — la clé privée ne quitte jamais l'app.
     final timestamp = DateTime.now().millisecondsSinceEpoch;
     final message = 'DORO_BIND:$authUid:$timestamp';
     final signature = await _crypto.signString(message, keyPair: keyPair);
     final signatureHex = signature.bytes.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
 
-    // 3) Vérification + liaison côté serveur (edge function, service_role).
+    // 4) Vérification + liaison côté serveur (edge function, service_role).
     final res = await _client.functions.invoke(
       'bind-identity',
       body: {
@@ -84,4 +100,20 @@ class SupabaseIdentityService {
   }
 
   Future<void> signOut() => _client.auth.signOut();
+
+  Future<void> _signInAnonymouslyWithRetry() async {
+    for (int attempt = 0; attempt < 3; attempt++) {
+      try {
+        await _client.auth.signInAnonymously();
+        return;
+      } on AuthException catch (e) {
+        if (e.statusCode == 'PGRST303' && attempt < 2) {
+          Logger.warn('PGRST303 on signInAnonymously — waiting ${2 + attempt}s before retry');
+          await Future.delayed(Duration(seconds: 2 + attempt));
+        } else {
+          rethrow;
+        }
+      }
+    }
+  }
 }
