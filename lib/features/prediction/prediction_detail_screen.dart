@@ -7,6 +7,7 @@ import '../../shared/theme/colors.dart';
 import '../wallet/wallet_screen.dart' show formatDoro;
 import '../wallet/wallet_provider.dart';
 import 'prediction_market_provider.dart';
+import 'create_prediction_screen.dart';
 
 class PredictionDetailScreen extends StatefulWidget {
   final PredictionEvent event;
@@ -195,6 +196,18 @@ class _PredictionDetailScreenState extends State<PredictionDetailScreen>
     }
   }
 
+  Future<void> _editEvent(PredictionMarketProvider p) async {
+    final updated = await Navigator.push<PredictionEvent>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => CreatePredictionScreen(editEvent: widget.event),
+      ),
+    );
+    if (updated != null && mounted) {
+      _snack("Marché mis à jour !");
+    }
+  }
+
   Future<void> _claim(PredictionMarketProvider p) async {
     setState(() => _isLoading = true);
     final payout = await p.claim(widget.event);
@@ -251,10 +264,16 @@ class _PredictionDetailScreenState extends State<PredictionDetailScreen>
             PopupMenuButton<String>(
               icon: const Icon(Icons.more_vert, color: AppColors.muted),
               onSelected: (v) {
+                if (v == "edit") _editEvent(p);
                 if (v == "delete") _deleteEvent(p);
               },
               itemBuilder: (_) => [
-                const PopupMenuItem(value: "delete", child: Row(children: [
+                PopupMenuItem(value: "edit", child: Row(children: [
+                  Icon(Icons.edit, color: Colors.white70, size: 20),
+                  SizedBox(width: 8),
+                  Text("Modifier"),
+                ])),
+                PopupMenuItem(value: "delete", child: Row(children: [
                   Icon(Icons.delete_outline, color: AppColors.error, size: 20),
                   SizedBox(width: 8),
                   Text("Supprimer", style: TextStyle(color: AppColors.error)),

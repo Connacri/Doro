@@ -1,12 +1,15 @@
 // lib/features/prediction/create_prediction_screen.dart
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../../core/prediction/prediction_event.dart';
 import '../../shared/theme/colors.dart';
 import '../wallet/wallet_provider.dart';
 import 'prediction_market_provider.dart';
 
 class CreatePredictionScreen extends StatefulWidget {
-  const CreatePredictionScreen({super.key});
+  final PredictionEvent? editEvent;
+
+  const CreatePredictionScreen({super.key, this.editEvent});
 
   @override
   State<CreatePredictionScreen> createState() => _CreatePredictionScreenState();
@@ -18,22 +21,35 @@ class _CreatePredictionScreenState extends State<CreatePredictionScreen> {
   final _oracleAddressCtrl = TextEditingController();
   final _oraclePublicKeyCtrl = TextEditingController();
 
-  int _selectedDays = 3; // default duration of 3 days
+  final List<int> _durations = [1, 3, 7, 14, 30];
+  int _selectedDays = 3;
   bool _isLoading = false;
+
+  bool get _isEdit => widget.editEvent != null;
 
   @override
   void initState() {
     super.initState();
-    // Auto-populate with current node's info as the default Oracle
     final provider = context.read<PredictionMarketProvider>();
     final walletProvider = context.read<WalletProvider>();
-    if (walletProvider.wallets.isNotEmpty) {
-      final wallet = walletProvider.wallets.last;
-      _oracleAddressCtrl.text = wallet.address;
-      _oraclePublicKeyCtrl.text = wallet.publicKey;
+
+    if (_isEdit) {
+      final e = widget.editEvent!;
+      _questionCtrl.text = e.question;
+      _oracleAddressCtrl.text = e.oracleAddress;
+      _oraclePublicKeyCtrl.text = e.oraclePublicKey;
+      final remainingMs = e.closesAt - DateTime.now().millisecondsSinceEpoch;
+      final remainingDays = remainingMs > 0 ? (remainingMs / 86400000).round().clamp(1, 30) : 1;
+      _selectedDays = _durations.contains(remainingDays) ? remainingDays : 1;
     } else {
-      _oracleAddressCtrl.text = provider.node.nodeId;
-      _oraclePublicKeyCtrl.text = provider.node.identity.publicKeyHex;
+      if (walletProvider.wallets.isNotEmpty) {
+        final wallet = walletProvider.wallets.last;
+        _oracleAddressCtrl.text = wallet.address;
+        _oraclePublicKeyCtrl.text = wallet.publicKey;
+      } else {
+        _oracleAddressCtrl.text = provider.node.nodeId;
+        _oraclePublicKeyCtrl.text = provider.node.identity.publicKeyHex;
+      }
     }
   }
 
@@ -50,27 +66,48 @@ class _CreatePredictionScreenState extends State<CreatePredictionScreen> {
     setState(() => _isLoading = true);
 
     final provider = context.read<PredictionMarketProvider>();
-    final duration = Duration(days: _selectedDays);
 
-    final event = await provider.createEvent(
-      question: _questionCtrl.text.trim(),
-      opensFor: duration,
-      oracleAddress: _oracleAddressCtrl.text.trim(),
-      oraclePublicKey: _oraclePublicKeyCtrl.text.trim(),
-    );
-
-    setState(() => _isLoading = false);
-    if (!mounted) return;
-
-    if (event != null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Marché prédictif créé et publié !")),
+    if (_isEdit) {
+      final closesAt = DateTime.now().millisecondsSinceEpoch + Duration(days: _selectedDays).inMilliseconds;
+      final updated = await provider.updateEvent(
+        event: widget.editEvent!,
+        question: _questionCtrl.text.trim(),
+        oracleAddress: _oracleAddressCtrl.text.trim(),
+        oraclePublicKey: _oraclePublicKeyCtrl.text.trim(),
+        closesAt: closesAt,
       );
-      Navigator.pop(context);
+      setState(() => _isLoading = false);
+      if (!mounted) return;
+      if (updated != null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Marché mis à jour !")),
+        );
+        Navigator.pop(context, updated);
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("Échec : ${provider.lastError ?? 'Erreur inconnue'}")),
+        );
+      }
     } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Échec : ${provider.lastError ?? 'Erreur inconnue'}")),
+      final duration = Duration(days: _selectedDays);
+      final event = await provider.createEvent(
+        question: _questionCtrl.text.trim(),
+        opensFor: duration,
+        oracleAddress: _oracleAddressCtrl.text.trim(),
+        oraclePublicKey: _oraclePublicKeyCtrl.text.trim(),
       );
+      setState(() => _isLoading = false);
+      if (!mounted) return;
+      if (event != null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Marché prédictif créé et publié !")),
+        );
+        Navigator.pop(context);
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("Échec : ${provider.lastError ?? 'Erreur inconnue'}")),
+        );
+      }
     }
   }
 
@@ -80,7 +117,7 @@ class _CreatePredictionScreenState extends State<CreatePredictionScreen> {
       backgroundColor: AppColors.background,
       appBar: AppBar(
         backgroundColor: AppColors.background,
-        title: const Text("Nouveau Marché", style: TextStyle(fontWeight: FontWeight.bold)),
+        title: Text(_isEdit ? "Modifier le Marché" : "Nouveau Marché", style: const TextStyle(fontWeight: FontWeight.bold)),
       ),
       body: SafeArea(
         child: _isLoading
@@ -120,7 +157,7 @@ class _CreatePredictionScreenState extends State<CreatePredictionScreen> {
                     Wrap(
                       spacing: 8,
                       runSpacing: 8,
-                      children: [1, 3, 7, 14, 30].map((days) {
+                      children: _durations.map((days) {
                         final isSelected = _selectedDays == days;
                         return ChoiceChip(
                           label: Text("$days ${days == 1 ? 'jour' : 'jours'}"),
@@ -189,7 +226,7 @@ class _CreatePredictionScreenState extends State<CreatePredictionScreen> {
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                       ),
                       onPressed: _submit,
-                      child: const Text("Créer le Marché", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                      child: Text(_isEdit ? "Enregistrer" : "Créer le Marché", style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
                     ),
                   ],
                 ),

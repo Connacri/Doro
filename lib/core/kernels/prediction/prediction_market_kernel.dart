@@ -629,6 +629,57 @@ class PredictionMarketKernel {
     }
   }
 
+  Future<PredictionEvent> updateEvent({
+    required PredictionEvent event,
+    required String question,
+    required String oracleAddress,
+    required String oraclePublicKey,
+    required int closesAt,
+    required KeyPair creatorKeyPair,
+  }) async {
+    if (event.isResolved) {
+      throw StateError("Impossible de modifier un événement déjà résolu");
+    }
+
+    final unsigned = PredictionEvent(
+      id: event.id,
+      question: question,
+      creatorId: event.creatorId,
+      creatorPublicKey: event.creatorPublicKey,
+      oracleAddress: oracleAddress,
+      oraclePublicKey: oraclePublicKey,
+      createdAt: event.createdAt,
+      closesAt: closesAt,
+      creatorSignature: "",
+    );
+    final sig = await _crypto.sign(utf8.encode(unsigned.creationHash), keyPair: creatorKeyPair);
+    final updated = PredictionEvent(
+      id: unsigned.id, question: unsigned.question,
+      creatorId: unsigned.creatorId, creatorPublicKey: unsigned.creatorPublicKey,
+      oracleAddress: unsigned.oracleAddress, oraclePublicKey: unsigned.oraclePublicKey,
+      createdAt: unsigned.createdAt, closesAt: unsigned.closesAt,
+      creatorSignature: _bytesToHex(sig.bytes),
+    );
+
+    eventRepo.save(updated);
+    p2p.broadcast({"type": "event_update", ...updated.toJson()});
+    _eventChanges.add(null);
+
+    if (_adminSupabase != null) {
+      unawaited(_adminSupabase!.from('prediction_events').update({
+        'question': updated.question,
+        'oracle_address': updated.oracleAddress,
+        'oracle_public_key': updated.oraclePublicKey,
+        'closes_at': updated.closesAt,
+        'creator_signature': updated.creatorSignature,
+      }).eq('id', updated.id).catchError((e) {
+        Logger.error("Supabase update event fields error: $e");
+      }));
+    }
+
+    return updated;
+  }
+
   Future<void> deleteEvent(PredictionEvent event) async {
     if (event.isResolved) {
       Logger.warn("Impossible de supprimer un événement déjà résolu");

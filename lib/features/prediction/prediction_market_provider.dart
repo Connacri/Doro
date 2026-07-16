@@ -93,6 +93,44 @@ class PredictionMarketProvider extends ChangeNotifier {
     return true;
   }
 
+  Future<PredictionEvent?> updateEvent({
+    required PredictionEvent event,
+    required String question,
+    required String oracleAddress,
+    required String oraclePublicKey,
+    required int closesAt,
+  }) async {
+    if (!_ensureWallet()) return null;
+    final wallet = walletProvider!.wallets.last;
+    final keyPair = await KeypairStore.load(wallet.address);
+    if (keyPair == null) {
+      lastError = "Clé privée locale introuvable.";
+      notifyListeners();
+      return null;
+    }
+    if (wallet.address != event.creatorId) {
+      lastError = "Seul le créateur peut modifier ce marché.";
+      notifyListeners();
+      return null;
+    }
+    try {
+      final updated = await node.predictionKernel.updateEvent(
+        event: event,
+        question: question,
+        oracleAddress: oracleAddress,
+        oraclePublicKey: oraclePublicKey,
+        closesAt: closesAt,
+        creatorKeyPair: keyPair,
+      );
+      notifyListeners();
+      return updated;
+    } catch (e) {
+      lastError = e.toString();
+      notifyListeners();
+      return null;
+    }
+  }
+
   Future<bool> deleteEvent(PredictionEvent event) async {
     if (!_ensureWallet()) return false;
     final wallet = walletProvider!.wallets.last;
