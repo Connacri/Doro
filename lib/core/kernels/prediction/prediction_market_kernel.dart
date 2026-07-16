@@ -93,7 +93,7 @@ class PredictionMarketKernel {
       _adminSupabase = SupabaseClient(SupabaseConfig.url, SupabaseConfig.serviceRoleKey);
       Logger.info("PredictionMarketKernel: admin client créé avec service_role");
     } else {
-      Logger.warn("PredictionMarketKernel: pas de service_role — CRUD Supabase désactivé");
+      Logger.info("PredictionMarketKernel: pas de service_role (utilisation du client standard avec RLS)");
     }
     _subscribeRealtime();
     _hydratePredictionsFromServer();
@@ -427,7 +427,7 @@ class PredictionMarketKernel {
     p2p.broadcast({"type": "event_publish", ...event.toJson()});
     _eventChanges.add(null);
 
-    if (_adminSupabase != null) {
+    if (_supabase != null) {
       unawaited(_adminSupabase!.from('prediction_events').insert({
         'id': event.id,
         'question': event.question,
@@ -625,7 +625,7 @@ class PredictionMarketKernel {
     });
     _eventChanges.add(null);
 
-    if (_adminSupabase != null) {
+    if (_supabase != null) {
       unawaited(_adminSupabase!.from('prediction_events').update({
         'winning_outcome': outcome.name,
         'resolution_signature': signatureHex,

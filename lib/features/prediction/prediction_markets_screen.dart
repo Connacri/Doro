@@ -126,6 +126,10 @@ class _PredictionMarketsScreenState extends State<PredictionMarketsScreen> with 
   }
 
   Widget _buildEventCard(BuildContext context, PredictionEvent event, PredictionMarketProvider provider) {
+    final myAddr = context.read<WalletProvider>().wallets.isNotEmpty
+        ? context.read<WalletProvider>().wallets.last.address
+        : "";
+    final isCreator = myAddr == event.creatorId;
     final yesPrice = _getYesPrice(event.id, provider);
     final noPrice = 1.0 - yesPrice;
     final yesPercent = (yesPrice * 100).toStringAsFixed(0);
@@ -211,13 +215,9 @@ class _PredictionMarketsScreenState extends State<PredictionMarketsScreen> with 
                               ),
                             ],
                           ),
-                        if (!event.isResolved)
+                        if (!event.isResolved && isCreator)
                           InkWell(
-                            onTap: () {
-                              final w = context.read<WalletProvider>();
-                              final myAddr = w.wallets.isNotEmpty ? w.wallets.last.address : "";
-                              if (myAddr == event.creatorId) _deleteEvent(context, event, provider);
-                            },
+                            onTap: () => _deleteEvent(context, event, provider),
                             child: const Padding(
                               padding: EdgeInsets.only(left: 12),
                               child: Icon(Icons.delete_outline, size: 16, color: AppColors.muted),
