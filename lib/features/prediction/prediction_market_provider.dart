@@ -64,6 +64,8 @@ class PredictionMarketProvider extends ChangeNotifier {
       oraclePublicKey: oraclePublicKey ?? wallet.publicKey,
       opensFor: opensFor,
       creatorKeyPair: keyPair,
+      creatorAddress: wallet.address,
+      creatorPublicKey: wallet.publicKey,
     );
     notifyListeners();
     return event;

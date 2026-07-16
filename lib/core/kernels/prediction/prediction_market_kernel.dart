@@ -91,6 +91,9 @@ class PredictionMarketKernel {
     _supabase = client;
     if (SupabaseConfig.serviceRoleKey.isNotEmpty) {
       _adminSupabase = SupabaseClient(SupabaseConfig.url, SupabaseConfig.serviceRoleKey);
+      Logger.info("PredictionMarketKernel: admin client créé avec service_role");
+    } else {
+      Logger.warn("PredictionMarketKernel: pas de service_role — CRUD Supabase désactivé");
     }
     _subscribeRealtime();
     _hydratePredictionsFromServer();
@@ -393,13 +396,17 @@ class PredictionMarketKernel {
     required String oraclePublicKey,
     required Duration opensFor,
     required KeyPair creatorKeyPair,
+    String? creatorAddress,
+    String? creatorPublicKey,
   }) async {
     final now = DateTime.now().millisecondsSinceEpoch;
+    final addr = creatorAddress ?? identity.nodeId;
+    final pubKey = creatorPublicKey ?? identity.publicKeyHex;
     final unsigned = PredictionEvent(
       id: IdGenerator.generateId("event"),
       question: question,
-      creatorId: identity.nodeId,
-      creatorPublicKey: identity.publicKeyHex,
+      creatorId: addr,
+      creatorPublicKey: pubKey,
       oracleAddress: oracleAddress,
       oraclePublicKey: oraclePublicKey,
       createdAt: now,
