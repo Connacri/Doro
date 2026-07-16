@@ -169,6 +169,32 @@ class _PredictionDetailScreenState extends State<PredictionDetailScreen>
     }
   }
 
+  Future<void> _deleteEvent(PredictionMarketProvider p) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.surface,
+        title: const Text("Supprimer le marché", style: TextStyle(color: AppColors.text)),
+        content: const Text("Cette action est irréversible. Toutes les parts et ordres seront perdus.",
+            style: TextStyle(color: AppColors.text)),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text("Annuler")),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text("Supprimer", style: TextStyle(color: Colors.white))),
+        ],
+      ),
+    );
+    if (confirm != true || !mounted) return;
+    setState(() => _isLoading = true);
+    final ok = await p.deleteEvent(widget.event);
+    setState(() => _isLoading = false);
+    if (ok && mounted) {
+      _snack("Marché supprimé !");
+      Navigator.pop(context);
+    } else {
+      _snack(p.lastError ?? "Échec suppression");
+    }
+  }
+
   Future<void> _claim(PredictionMarketProvider p) async {
     setState(() => _isLoading = true);
     final payout = await p.claim(widget.event);
@@ -205,6 +231,7 @@ class _PredictionDetailScreenState extends State<PredictionDetailScreen>
     final posYes = p.positionFor(widget.event.id, yes: true);
     final posNo = p.positionFor(widget.event.id, yes: false);
     final isOracle = widget.event.oracleAddress == myAddress;
+    final isCreator = widget.event.creatorId == myAddress;
 
     final eventPositions = p.node.outcomePositionRepo.positionsForEvent(widget.event.id);
     final totalMinted = eventPositions.fold<BigInt>(BigInt.zero, (s, pos) => s + pos.shares) ~/ BigInt.from(2);
@@ -219,6 +246,22 @@ class _PredictionDetailScreenState extends State<PredictionDetailScreen>
       appBar: AppBar(
         backgroundColor: AppColors.background,
         title: const Text("Marché Prédictif", style: TextStyle(fontWeight: FontWeight.bold)),
+        actions: [
+          if (isCreator && !widget.event.isResolved)
+            PopupMenuButton<String>(
+              icon: const Icon(Icons.more_vert, color: AppColors.muted),
+              onSelected: (v) {
+                if (v == "delete") _deleteEvent(p);
+              },
+              itemBuilder: (_) => [
+                const PopupMenuItem(value: "delete", child: Row(children: [
+                  Icon(Icons.delete_outline, color: AppColors.error, size: 20),
+                  SizedBox(width: 8),
+                  Text("Supprimer", style: TextStyle(color: AppColors.error)),
+                ])),
+              ],
+            ),
+        ],
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator(color: AppColors.primary))

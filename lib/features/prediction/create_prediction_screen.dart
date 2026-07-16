@@ -117,8 +117,9 @@ class _CreatePredictionScreenState extends State<CreatePredictionScreen> {
                       style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: AppColors.text),
                     ),
                     const SizedBox(height: 10),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
                       children: [1, 3, 7, 14, 30].map((days) {
                         final isSelected = _selectedDays == days;
                         return ChoiceChip(

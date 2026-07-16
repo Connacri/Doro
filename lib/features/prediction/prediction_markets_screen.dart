@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../../core/prediction/prediction_event.dart';
 import '../../shared/theme/colors.dart';
 import '../wallet/wallet_screen.dart' show formatDoro;
+import '../wallet/wallet_provider.dart';
 import '../../core/market/order_model.dart' show OrderSide;
 import 'prediction_market_provider.dart';
 import 'create_prediction_screen.dart';
@@ -102,6 +103,28 @@ class _PredictionMarketsScreenState extends State<PredictionMarketsScreen> with 
     return 0.50; // default 50%
   }
 
+  void _deleteEvent(BuildContext context, PredictionEvent event, PredictionMarketProvider provider) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.surface,
+        title: const Text("Supprimer le marché", style: TextStyle(color: AppColors.text)),
+        content: const Text("Cette action est irréversible.", style: TextStyle(color: AppColors.text)),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text("Annuler")),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text("Supprimer", style: TextStyle(color: Colors.white))),
+        ],
+      ),
+    );
+    if (confirm != true) return;
+    final ok = await provider.deleteEvent(event);
+    if (ok) {
+      if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Marché supprimé !")));
+    } else {
+      if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(provider.lastError ?? "Échec suppression")));
+    }
+  }
+
   Widget _buildEventCard(BuildContext context, PredictionEvent event, PredictionMarketProvider provider) {
     final yesPrice = _getYesPrice(event.id, provider);
     final noPrice = 1.0 - yesPrice;
@@ -175,17 +198,33 @@ class _PredictionMarketsScreenState extends State<PredictionMarketsScreen> with 
                         ),
                       ],
                     ),
-                    if (totalShares > BigInt.zero)
-                      Row(
-                        children: [
-                          const Icon(Icons.wallet, size: 12, color: AppColors.primary),
-                          const SizedBox(width: 4),
-                          const Text(
-                            "DÉTENTEUR",
-                            style: TextStyle(fontSize: 9, fontWeight: FontWeight.w900, color: AppColors.primary),
+                    Row(
+                      children: [
+                        if (totalShares > BigInt.zero)
+                          Row(
+                            children: [
+                              const Icon(Icons.wallet, size: 12, color: AppColors.primary),
+                              const SizedBox(width: 4),
+                              const Text(
+                                "DÉTENTEUR",
+                                style: TextStyle(fontSize: 9, fontWeight: FontWeight.w900, color: AppColors.primary),
+                              ),
+                            ],
                           ),
-                        ],
-                      ),
+                        if (!event.isResolved)
+                          InkWell(
+                            onTap: () {
+                              final w = context.read<WalletProvider>();
+                              final myAddr = w.wallets.isNotEmpty ? w.wallets.last.address : "";
+                              if (myAddr == event.creatorId) _deleteEvent(context, event, provider);
+                            },
+                            child: const Padding(
+                              padding: EdgeInsets.only(left: 12),
+                              child: Icon(Icons.delete_outline, size: 16, color: AppColors.muted),
+                            ),
+                          ),
+                      ],
+                    ),
                   ],
                 ),
               ),
