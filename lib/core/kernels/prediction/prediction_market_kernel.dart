@@ -21,6 +21,7 @@ import '../../utils/id_generator.dart';
 import '../../utils/node_identity.dart';
 import '../../utils/logger.dart';
 import '../../wallet/address_generator.dart';
+import '../../supabase/supabase_config.dart';
 
 /// Marché prédictif binaire "winner takes all" au-dessus du DAG Doro.
 ///
@@ -80,6 +81,7 @@ class PredictionMarketKernel {
   Stream<void> get orderChanges => _orderChanges.stream;
 
   SupabaseClient? _supabase;
+  SupabaseClient? _adminSupabase;
   RealtimeChannel? _eventsChannel;
   RealtimeChannel? _ordersChannel;
   RealtimeChannel? _tradesChannel;
@@ -87,6 +89,9 @@ class PredictionMarketKernel {
   void initSupabase(SupabaseClient client) {
     if (_supabase != null) return;
     _supabase = client;
+    if (SupabaseConfig.serviceRoleKey.isNotEmpty) {
+      _adminSupabase = SupabaseClient(SupabaseConfig.url, SupabaseConfig.serviceRoleKey);
+    }
     _subscribeRealtime();
     _hydratePredictionsFromServer();
   }
@@ -415,8 +420,8 @@ class PredictionMarketKernel {
     p2p.broadcast({"type": "event_publish", ...event.toJson()});
     _eventChanges.add(null);
 
-    if (_supabase != null) {
-      unawaited(_supabase!.from('prediction_events').insert({
+    if (_adminSupabase != null) {
+      unawaited(_adminSupabase!.from('prediction_events').insert({
         'id': event.id,
         'question': event.question,
         'creator_id': event.creatorId,
@@ -613,8 +618,8 @@ class PredictionMarketKernel {
     });
     _eventChanges.add(null);
 
-    if (_supabase != null) {
-      unawaited(_supabase!.from('prediction_events').update({
+    if (_adminSupabase != null) {
+      unawaited(_adminSupabase!.from('prediction_events').update({
         'winning_outcome': outcome.name,
         'resolution_signature': signatureHex,
         'resolved_at': resolved.resolvedAt,
@@ -635,8 +640,8 @@ class PredictionMarketKernel {
     p2p.broadcast({"type": "event_delete", "eventId": event.id});
     _eventChanges.add(null);
 
-    if (_supabase != null) {
-      unawaited(_supabase!.from('prediction_events').delete().eq('id', event.id).catchError((e) {
+    if (_adminSupabase != null) {
+      unawaited(_adminSupabase!.from('prediction_events').delete().eq('id', event.id).catchError((e) {
         Logger.error("Supabase delete event error: $e");
       }));
     }
