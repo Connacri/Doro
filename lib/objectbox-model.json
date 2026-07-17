@@ -644,222 +644,28 @@
         }
       ],
       "relations": []
-    },
-    {
-      "id": "13:1033663154385712650",
-      "lastPropertyId": "7:8718584066871209174",
-      "name": "OutcomePositionEntity",
-      "properties": [
-        {
-          "id": "1:1473680726864055426",
-          "name": "id",
-          "type": 6,
-          "flags": 1
-        },
-        {
-          "id": "2:3082211723300183174",
-          "name": "positionKey",
-          "indexId": "13:3063939061757652756",
-          "type": 9,
-          "flags": 2080
-        },
-        {
-          "id": "3:4558256438303709408",
-          "name": "eventId",
-          "indexId": "14:8433803497670421846",
-          "type": 9,
-          "flags": 2048
-        },
-        {
-          "id": "4:741340182181196503",
-          "name": "outcome",
-          "type": 9
-        },
-        {
-          "id": "5:6622439812766285340",
-          "name": "holderAddress",
-          "indexId": "15:6363463816776090891",
-          "type": 9,
-          "flags": 2048
-        },
-        {
-          "id": "6:7993569278990662125",
-          "name": "shares",
-          "type": 9
-        },
-        {
-          "id": "7:8718584066871209174",
-          "name": "sharesClaimed",
-          "type": 9
-        }
-      ],
-      "relations": []
-    },
-    {
-      "id": "14:2950824519010676523",
-      "lastPropertyId": "13:7060527266479117612",
-      "name": "PredictionEventEntity",
-      "properties": [
-        {
-          "id": "1:6524503261597639852",
-          "name": "id",
-          "type": 6,
-          "flags": 1
-        },
-        {
-          "id": "2:364278654926660203",
-          "name": "eventId",
-          "indexId": "16:8135301124440269773",
-          "type": 9,
-          "flags": 2080
-        },
-        {
-          "id": "3:4402208310648403276",
-          "name": "question",
-          "type": 9
-        },
-        {
-          "id": "4:7887678197214893282",
-          "name": "creatorId",
-          "type": 9
-        },
-        {
-          "id": "5:2167973442514709282",
-          "name": "creatorPublicKey",
-          "type": 9
-        },
-        {
-          "id": "6:3650014173014036049",
-          "name": "oracleAddress",
-          "type": 9
-        },
-        {
-          "id": "7:7579545253845430614",
-          "name": "oraclePublicKey",
-          "type": 9
-        },
-        {
-          "id": "8:6318681073551219613",
-          "name": "createdAt",
-          "type": 6
-        },
-        {
-          "id": "9:6582678908689899910",
-          "name": "closesAt",
-          "type": 6
-        },
-        {
-          "id": "10:3800191658796653076",
-          "name": "creatorSignature",
-          "type": 9
-        },
-        {
-          "id": "11:4038093046421052627",
-          "name": "winningOutcome",
-          "type": 9
-        },
-        {
-          "id": "12:110234593099617015",
-          "name": "resolutionSignature",
-          "type": 9
-        },
-        {
-          "id": "13:7060527266479117612",
-          "name": "resolvedAt",
-          "type": 6
-        }
-      ],
-      "relations": []
-    },
-    {
-      "id": "15:1366588487136931548",
-      "lastPropertyId": "13:6731324038609374672",
-      "name": "ShareOrderEntity",
-      "properties": [
-        {
-          "id": "1:3735704239756925831",
-          "name": "id",
-          "type": 6,
-          "flags": 1
-        },
-        {
-          "id": "2:7409068903509686582",
-          "name": "orderId",
-          "indexId": "17:6390729082013594174",
-          "type": 9,
-          "flags": 2080
-        },
-        {
-          "id": "3:800672420890637005",
-          "name": "eventId",
-          "indexId": "18:8376044222990670280",
-          "type": 9,
-          "flags": 2048
-        },
-        {
-          "id": "4:444107741582354510",
-          "name": "outcome",
-          "type": 9
-        },
-        {
-          "id": "5:880174710583456745",
-          "name": "makerId",
-          "indexId": "19:6583846594910813951",
-          "type": 9,
-          "flags": 2048
-        },
-        {
-          "id": "6:4031438308374077317",
-          "name": "makerPublicKey",
-          "type": 9
-        },
-        {
-          "id": "7:409332787836944527",
-          "name": "side",
-          "type": 9
-        },
-        {
-          "id": "8:7014711033917940517",
-          "name": "shares",
-          "type": 9
-        },
-        {
-          "id": "9:2009811897784628973",
-          "name": "filledShares",
-          "type": 9
-        },
-        {
-          "id": "10:6823776314555864835",
-          "name": "pricePerShare",
-          "type": 9
-        },
-        {
-          "id": "11:3603172700751342586",
-          "name": "timestamp",
-          "type": 6
-        },
-        {
-          "id": "12:6322544403197420857",
-          "name": "signature",
-          "type": 9
-        },
-        {
-          "id": "13:6731324038609374672",
-          "name": "cancelled",
-          "type": 1
-        }
-      ],
-      "relations": []
     }
   ],
-  "lastEntityId": "15:1366588487136931548",
-  "lastIndexId": "19:6583846594910813951",
+  "lastEntityId": "12:8165455256903830067",
+  "lastIndexId": "12:8786083299139181807",
   "lastRelationId": "0:0",
   "lastSequenceId": "0:0",
   "modelVersion": 5,
   "modelVersionParserMinimum": 5,
-  "retiredEntityUids": [],
-  "retiredIndexUids": [],
+  "retiredEntityUids": [
+    1033663154385712650,
+    2950824519010676523,
+    1366588487136931548
+  ],
+  "retiredIndexUids": [
+    3063939061757652756,
+    8433803497670421846,
+    6363463816776090891,
+    8135301124440269773,
+    6390729082013594174,
+    8376044222990670280,
+    6583846594910813951
+  ],
   "retiredPropertyUids": [],
   "retiredRelationUids": [],
   "version": 1

@@ -17,9 +17,7 @@ import '../kernels/messenger/messenger_kernel.dart';
 import '../kernels/profile/profile_kernel.dart';
 import '../kernels/market/market_kernel.dart';
 import '../kernels/prediction/prediction_market_kernel.dart';
-import '../storage/repositories/prediction_event_repository.dart';
-import '../storage/repositories/outcome_position_repository.dart';
-import '../storage/repositories/share_order_repository.dart';
+
 import '../dag/transaction_model.dart';
 import '../network/network_health.dart';
 import 'webrtc_engine.dart';
@@ -48,9 +46,6 @@ class P2PNode {
   late final BetStakeRepository betStakeRepo;
   late final BetVoteRepository betVoteRepo;
   late final PredictionMarketKernel predictionKernel;
-  late final PredictionEventRepository predictionEventRepo;
-  late final OutcomePositionRepository outcomePositionRepo;
-  late final ShareOrderRepository shareOrderRepo;
 
   final SybilProtection sybil = SybilProtection();
 
@@ -137,22 +132,10 @@ class P2PNode {
       sybil: sybil,
     );
 
-    predictionEventRepo = PredictionEventRepository(db);
-    outcomePositionRepo = OutcomePositionRepository(db);
-    shareOrderRepo = ShareOrderRepository(db);
     predictionKernel = PredictionMarketKernel(
       identity: identity,
-      p2p: p2p,
       dag: dag,
-      eventRepo: predictionEventRepo,
-      positionRepo: outcomePositionRepo,
-      tradeRepo: tradeRepo,
-      shareOrderRepo: shareOrderRepo,
     );
-
-    marketKernel.tradeUpdates.listen((_) {
-      predictionKernel.processTrades(tradeRepo.all());
-    });
   }
 
   Stream<Map<String, dynamic>> get messages => messengerKernel.messages;

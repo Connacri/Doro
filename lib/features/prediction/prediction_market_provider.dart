@@ -1,4 +1,3 @@
-// lib/features/prediction/prediction_market_provider.dart
 import 'package:flutter/material.dart';
 import '../../core/p2p/p2p_node.dart';
 import '../../core/prediction/outcome_position.dart';
@@ -24,26 +23,19 @@ class PredictionMarketProvider extends ChangeNotifier {
     node.predictionKernel.orderChanges.listen((_) {
       if (hasListeners) notifyListeners();
     });
-    // Listen to market kernel trade updates to refresh positions
-    node.marketKernel.tradeUpdates.listen((_) {
-      if (hasListeners) notifyListeners();
-    });
   }
 
-  List<PredictionEvent> get openEvents => node.predictionEventRepo.openEvents();
-  List<PredictionEvent> get resolvedEvents => node.predictionEventRepo.resolvedEvents();
+  List<PredictionEvent> get openEvents => node.predictionKernel.openEvents;
+  List<PredictionEvent> get resolvedEvents => node.predictionKernel.resolvedEvents;
 
   List<ShareOrder> openShareOrdersFor(String eventId) =>
-      node.shareOrderRepo.openOrdersForEvent(eventId);
+      node.predictionKernel.openShareOrdersFor(eventId);
 
   OutcomePosition positionFor(String eventId, {required bool yes}) {
     final holder = walletProvider?.wallets.isNotEmpty == true ? walletProvider!.wallets.last.address : "";
-    return node.outcomePositionRepo.get(eventId, yes ? "yes" : "no", holder);
+    return node.predictionKernel.positionFor(eventId, yes ? "yes" : "no", holder);
   }
 
-  /// Crée un nouvel événement de pari — l'utilisateur courant en devient
-  /// l'oracle (résolveur) par défaut ; passez `oracleAddress`/
-  /// `oraclePublicKey` pour désigner un tiers.
   Future<PredictionEvent?> createEvent({
     required String question,
     required Duration opensFor,
@@ -71,8 +63,6 @@ class PredictionMarketProvider extends ChangeNotifier {
     return event;
   }
 
-  /// Dépose `shares` DORO en escrow et reçoit `shares` parts OUI + `shares`
-  /// parts NON (1 DORO = 1 part complète, comme dans l'exemple de la Fed).
   Future<bool> buyCompleteSet({required PredictionEvent event, required BigInt shares}) async {
     if (!_ensureWallet()) return false;
     final wallet = walletProvider!.wallets.last;
@@ -167,8 +157,6 @@ class PredictionMarketProvider extends ChangeNotifier {
     return true;
   }
 
-  /// Réclame le paiement des parts gagnantes détenues — crédite
-  /// directement le solde DORO du wallet courant.
   Future<BigInt?> claim(PredictionEvent event) async {
     if (!_ensureWallet()) return null;
     final wallet = walletProvider!.wallets.last;
@@ -180,8 +168,6 @@ class PredictionMarketProvider extends ChangeNotifier {
     if (payout == null) {
       lastError = "Rien à réclamer sur ce marché.";
     } else {
-      // Reflète le crédit protocolaire (déjà appliqué dans dag.balances)
-      // dans le cache local WalletCore/UI.
       walletProvider!.core.creditIfLocal(wallet.address, payout);
       await walletProvider!.repo.syncFromCore(walletProvider!.core);
     }
@@ -189,9 +175,6 @@ class PredictionMarketProvider extends ChangeNotifier {
     return payout;
   }
 
-  /// Profit net (unités atomiques DORO) sur la position OUI ou NON
-  /// détenue, une fois l'issue connue — exactement la formule demandée :
-  /// (1 - prix d'achat) × contrats si gagné, -prix d'achat × contrats sinon.
   BigInt? projectedProfit({
     required PredictionEvent event,
     required bool yes,

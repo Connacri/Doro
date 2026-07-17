@@ -154,7 +154,7 @@ class _PredictionMarketsScreenState extends State<PredictionMarketsScreen> with 
     final totalShares = positionYes.shares + positionNo.shares;
 
     // Get total escrow value of the event
-    final eventPositions = provider.node.outcomePositionRepo.positionsForEvent(event.id);
+    final eventPositions = provider.node.predictionKernel.positionsForEvent(event.id);
     final totalSharesMinted = eventPositions.fold<BigInt>(BigInt.zero, (sum, p) => sum + p.shares) ~/ BigInt.from(2);
     final totalEscrow = totalSharesMinted * BigInt.from(10).pow(18);
 

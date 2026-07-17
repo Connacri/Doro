@@ -256,7 +256,7 @@ class _PredictionDetailScreenState extends State<PredictionDetailScreen>
     final isOracle = event.oracleAddress == myAddress;
     final isCreator = event.creatorId == myAddress;
 
-    final eventPositions = p.node.outcomePositionRepo.positionsForEvent(event.id);
+    final eventPositions = p.node.predictionKernel.positionsForEvent(event.id);
     final totalMinted = eventPositions.fold<BigInt>(BigInt.zero, (s, pos) => s + pos.shares) ~/ BigInt.from(2);
     final totalEscrow = totalMinted * BigInt.from(10).pow(18);
 
