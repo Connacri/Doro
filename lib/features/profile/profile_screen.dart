@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:provider/provider.dart';
 
 import 'profile_provider.dart';
@@ -10,6 +11,8 @@ import '../../core/wallet/genesis.dart';
 import '../chat/chat_screen.dart';
 import '../simulator/simulator_screen.dart';
 import '../../core/supabase/supabase_bootstrap.dart';
+import '../../core/storage/objectbox/store.dart';
+import '../../core/storage/secure/keypair_store.dart';
 import '../../shared/theme/colors.dart';
 
 class ProfileScreen extends StatefulWidget {
@@ -135,6 +138,44 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   String _formatDate(DateTime d) => "${d.day}/${d.month}/${d.year}";
+
+  Future<void> _confirmClearLocalData(BuildContext context) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text("Vider les données locales ?"),
+        content: const Text(
+          "Toutes les données locales seront effacées :\n"
+          "• Transactions, wallets, solde\n"
+          "• Messages, contacts, pairs connectés\n"
+          "• Paris, prédictions, ordres\n\n"
+          "Les wallets importés avec leur seed pourront être restaurés.\n"
+          "L'application va s'arrêter — rouvre-la pour repartir à zéro.",
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text("Annuler")),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text("Vider et quitter"),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !context.mounted) return;
+
+    final db = context.read<ObjectBoxStore>();
+    final net = context.read<NetworkProvider>();
+    net.node.stop();
+    await KeypairStore.clearAll();
+    await const FlutterSecureStorage().delete(key: 'doro_node_identity_seed');
+    db.clearAll();
+
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text("Données locales effacées.")),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -378,6 +419,27 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               ),
                             ),
                           ),
+                        const SizedBox(height: 10),
+                        _SectionCard(
+                          padding: EdgeInsets.zero,
+                          border: Colors.orange.withValues(alpha: 0.25),
+                          child: Material(
+                            color: Colors.transparent,
+                            borderRadius: BorderRadius.circular(20),
+                            clipBehavior: Clip.antiAlias,
+                            child: ListTile(
+                              contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                              leading: Container(
+                                padding: const EdgeInsets.all(8),
+                                decoration: BoxDecoration(color: Colors.orange.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(10)),
+                                child: const Icon(Icons.cleaning_services, color: Colors.orange),
+                              ),
+                              title: const Text("Vider les données locales", style: TextStyle(fontWeight: FontWeight.w600)),
+                              subtitle: const Text("Efface objectbox, wallets, pairs, messages — conserve l'identité du nœud.", style: TextStyle(fontSize: 12)),
+                              onTap: () => _confirmClearLocalData(context),
+                            ),
+                          ),
+                        ),
                         const SizedBox(height: 24),
                       ],
                     ),

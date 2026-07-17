@@ -125,6 +125,20 @@ class _PredictionMarketsScreenState extends State<PredictionMarketsScreen> with 
     }
   }
 
+  void _editEvent(BuildContext context, PredictionEvent event, PredictionMarketProvider provider) async {
+    final updated = await Navigator.push<PredictionEvent>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => CreatePredictionScreen(editEvent: event),
+      ),
+    );
+    if (updated != null && context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Marché mis à jour !")),
+      );
+    }
+  }
+
   Widget _buildEventCard(BuildContext context, PredictionEvent event, PredictionMarketProvider provider) {
     final myAddr = context.read<WalletProvider>().wallets.isNotEmpty
         ? context.read<WalletProvider>().wallets.last.address
@@ -216,12 +230,24 @@ class _PredictionMarketsScreenState extends State<PredictionMarketsScreen> with 
                             ],
                           ),
                         if (!event.isResolved && isCreator)
-                          InkWell(
-                            onTap: () => _deleteEvent(context, event, provider),
-                            child: const Padding(
-                              padding: EdgeInsets.only(left: 12),
-                              child: Icon(Icons.delete_outline, size: 16, color: AppColors.muted),
-                            ),
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              InkWell(
+                                onTap: () => _editEvent(context, event, provider),
+                                child: const Padding(
+                                  padding: EdgeInsets.only(left: 12),
+                                  child: Icon(Icons.edit_outlined, size: 16, color: AppColors.muted),
+                                ),
+                              ),
+                              InkWell(
+                                onTap: () => _deleteEvent(context, event, provider),
+                                child: const Padding(
+                                  padding: EdgeInsets.only(left: 12),
+                                  child: Icon(Icons.delete_outline, size: 16, color: AppColors.muted),
+                                ),
+                              ),
+                            ],
                           ),
                       ],
                     ),

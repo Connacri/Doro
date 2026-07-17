@@ -129,6 +129,7 @@ class _DoroAppState extends State<DoroApp> with WidgetsBindingObserver {
 
     return MultiProvider(
       providers: [
+        Provider.value(value: widget.db),
         ChangeNotifierProvider.value(value: bootstrap),
         ChangeNotifierProvider(create: (_) => WalletProvider(node.wallet, _walletRepo, node: node)),
         ChangeNotifierProxyProvider<WalletProvider, ChatProvider>(

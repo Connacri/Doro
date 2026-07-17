@@ -33,3 +33,30 @@ create policy "prediction_events_delete_owner"
   on public.prediction_events for delete
   to authenticated
   using (creator_id = current_pubkey());
+
+-- Cascading RLS delete policies for orders and trades
+drop policy if exists "share_orders_delete_policy" on public.share_orders;
+create policy "share_orders_delete_policy"
+  on public.share_orders for delete
+  to authenticated
+  using (
+    maker_id = current_pubkey()
+    or exists (
+      select 1 from public.prediction_events e
+      where e.id = event_id and e.creator_id = current_pubkey()
+    )
+  );
+
+drop policy if exists "prediction_trades_delete_policy" on public.prediction_trades;
+create policy "prediction_trades_delete_policy"
+  on public.prediction_trades for delete
+  to authenticated
+  using (
+    seller_id = current_pubkey()
+    or buyer_id = current_pubkey()
+    or exists (
+      select 1 from public.share_orders o
+      join public.prediction_events e on o.event_id = e.id
+      where o.id = order_id and e.creator_id = current_pubkey()
+    )
+  );

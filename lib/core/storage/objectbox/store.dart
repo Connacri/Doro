@@ -1,7 +1,23 @@
 import 'dart:io';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
-import '../../../objectbox.g.dart'; // This will be generated
+import '../../../objectbox.g.dart';
+
+import '../entities/bet_entity.dart';
+import '../entities/bet_stake_entity.dart';
+import '../entities/bet_vote_entity.dart';
+import '../entities/chat_message_entity.dart';
+import '../entities/contact_entity.dart';
+import '../entities/order_entity.dart';
+import '../entities/outcome_position_entity.dart';
+import '../entities/peer_entity.dart';
+import '../entities/peer_profile_entity.dart';
+import '../entities/prediction_event_entity.dart';
+import '../entities/profile_entity.dart';
+import '../entities/share_order_entity.dart';
+import '../entities/trade_entity.dart';
+import '../entities/tx_entity.dart';
+import '../entities/wallet_entity.dart';
 
 class ObjectBoxStore {
   Store? _store;
@@ -26,5 +42,23 @@ class ObjectBoxStore {
 
   void close() {
     _store?.close();
+  }
+
+  Future<void> clearAll() async {
+    getBox<BetEntity>().removeAll();
+    getBox<BetStakeEntity>().removeAll();
+    getBox<BetVoteEntity>().removeAll();
+    getBox<ChatMessageEntity>().removeAll();
+    getBox<ContactEntity>().removeAll();
+    getBox<OrderEntity>().removeAll();
+    getBox<OutcomePositionEntity>().removeAll();
+    getBox<PeerEntity>().removeAll();
+    getBox<PeerProfileEntity>().removeAll();
+    getBox<PredictionEventEntity>().removeAll();
+    getBox<ProfileEntity>().removeAll();
+    getBox<ShareOrderEntity>().removeAll();
+    getBox<TradeEntity>().removeAll();
+    getBox<TxEntity>().removeAll();
+    getBox<WalletEntity>().removeAll();
   }
 }

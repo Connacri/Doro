@@ -235,18 +235,28 @@ class _PredictionDetailScreenState extends State<PredictionDetailScreen>
     final w = context.watch<WalletProvider>();
     final myAddress = w.wallets.isNotEmpty ? w.wallets.last.address : "";
     final now = DateTime.now().millisecondsSinceEpoch;
-    final isOpen = !widget.event.isResolved && now < widget.event.closesAt;
 
-    final orders = p.openShareOrdersFor(widget.event.id);
-    final yesPrice = _getYesPrice(widget.event.id, orders);
+    // Dynamically retrieve the latest state of the event from the provider to show edits/resolutions immediately
+    final event = p.openEvents.firstWhere(
+      (e) => e.id == widget.event.id,
+      orElse: () => p.resolvedEvents.firstWhere(
+        (e) => e.id == widget.event.id,
+        orElse: () => widget.event,
+      ),
+    );
+
+    final isOpen = !event.isResolved && now < event.closesAt;
+
+    final orders = p.openShareOrdersFor(event.id);
+    final yesPrice = _getYesPrice(event.id, orders);
     final noPrice = 1.0 - yesPrice;
 
-    final posYes = p.positionFor(widget.event.id, yes: true);
-    final posNo = p.positionFor(widget.event.id, yes: false);
-    final isOracle = widget.event.oracleAddress == myAddress;
-    final isCreator = widget.event.creatorId == myAddress;
+    final posYes = p.positionFor(event.id, yes: true);
+    final posNo = p.positionFor(event.id, yes: false);
+    final isOracle = event.oracleAddress == myAddress;
+    final isCreator = event.creatorId == myAddress;
 
-    final eventPositions = p.node.outcomePositionRepo.positionsForEvent(widget.event.id);
+    final eventPositions = p.node.outcomePositionRepo.positionsForEvent(event.id);
     final totalMinted = eventPositions.fold<BigInt>(BigInt.zero, (s, pos) => s + pos.shares) ~/ BigInt.from(2);
     final totalEscrow = totalMinted * BigInt.from(10).pow(18);
 
@@ -260,7 +270,7 @@ class _PredictionDetailScreenState extends State<PredictionDetailScreen>
         backgroundColor: AppColors.background,
         title: const Text("Marché Prédictif", style: TextStyle(fontWeight: FontWeight.bold)),
         actions: [
-          if (isCreator && !widget.event.isResolved)
+          if (isCreator && !event.isResolved)
             PopupMenuButton<String>(
               icon: const Icon(Icons.more_vert, color: AppColors.muted),
               onSelected: (v) {
@@ -287,10 +297,10 @@ class _PredictionDetailScreenState extends State<PredictionDetailScreen>
           : ListView(
               padding: const EdgeInsets.all(16),
               children: [
-                Text(widget.event.question,
+                Text(event.question,
                     style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: AppColors.text, height: 1.3)),
                 const SizedBox(height: 12),
-                _metaRow(totalEscrow, widget.event.oracleAddress, widget.event.closesAt),
+                _metaRow(totalEscrow, event.oracleAddress, event.closesAt),
                 const SizedBox(height: 20),
 
                 // Probability + Chart Card
@@ -323,7 +333,7 @@ class _PredictionDetailScreenState extends State<PredictionDetailScreen>
                 const SizedBox(height: 16),
 
                 // Oracle panel
-                if (isOracle && !widget.event.isResolved) ...[
+                if (isOracle && !event.isResolved) ...[
                   Card(
                     color: Colors.amber.withValues(alpha: 0.08),
                     shape: RoundedRectangleBorder(
@@ -354,7 +364,7 @@ class _PredictionDetailScreenState extends State<PredictionDetailScreen>
                 ],
 
                 // Claim panel
-                if (widget.event.isResolved) ...[
+                if (event.isResolved) ...[
                   Card(
                     color: AppColors.surface,
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
@@ -364,7 +374,7 @@ class _PredictionDetailScreenState extends State<PredictionDetailScreen>
                         children: [
                           const Text("Résolution", style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: AppColors.text)),
                           const SizedBox(height: 6),
-                          Text("Issue : ${widget.event.winningOutcome == PredictionOutcome.yes ? "OUI" : "NON"}",
+                          Text("Issue : ${event.winningOutcome == PredictionOutcome.yes ? "OUI" : "NON"}",
                               style: const TextStyle(color: Colors.greenAccent, fontWeight: FontWeight.bold)),
                           const SizedBox(height: 12),
                           Row(children: [
@@ -376,8 +386,8 @@ class _PredictionDetailScreenState extends State<PredictionDetailScreen>
                           SizedBox(
                             width: double.infinity,
                             child: FilledButton.icon(
-                              onPressed: ((widget.event.winningOutcome == PredictionOutcome.yes && posYes.sharesClaimable > BigInt.zero) ||
-                                      (widget.event.winningOutcome == PredictionOutcome.no && posNo.sharesClaimable > BigInt.zero))
+                              onPressed: ((event.winningOutcome == PredictionOutcome.yes && posYes.sharesClaimable > BigInt.zero) ||
+                                      (event.winningOutcome == PredictionOutcome.no && posNo.sharesClaimable > BigInt.zero))
                                   ? () => _claim(p) : null,
                               icon: const Icon(Icons.monetization_on),
                               label: const Text("Réclamer 1 DORO/part"),
